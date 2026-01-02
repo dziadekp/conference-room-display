@@ -1,0 +1,22 @@
+# Render Blueprint for Conference Room Display
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: conference-room-display
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: DEBUG
+        value: "false"
+      # Add these in Render dashboard for OAuth:
+      # - key: GOOGLE_CLIENT_ID
+      # - key: GOOGLE_CLIENT_SECRET
+      # - key: MICROSOFT_CLIENT_ID
+      # - key: MICROSOFT_CLIENT_SECRET
+      # - key: MICROSOFT_TENANT_ID

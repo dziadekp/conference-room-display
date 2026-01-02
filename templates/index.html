@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Conference Room Display</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+</head>
+<body>
+    <div class="index-container">
+        <h1>📅 Conference Room Display</h1>
+        <p>Select a room to display or set up a new room</p>
+
+        {% if rooms %}
+        <div class="room-grid">
+            {% for room in rooms %}
+            <a href="/display/{{ room.id }}" class="room-card">
+                <h2>{{ room.name }}</h2>
+                <span>
+                    {% if room.calendar_provider %}
+                        {{ room.calendar_provider | title }} Calendar
+                    {% else %}
+                        Local Calendar
+                    {% endif %}
+                </span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="room-grid">
+            <div class="room-card" style="opacity: 0.5; cursor: default;">
+                <h2>No rooms configured</h2>
+                <span>Go to setup to add a room</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <a href="/setup" class="setup-link">⚙️ Setup Rooms & Calendars</a>
+    </div>
+</body>
+</html>

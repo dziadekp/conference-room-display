@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>{{ room.name }} - Conference Room</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+    <style>
+        /* Prevent text selection on touch */
+        * {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="display-container">
+        <!-- Status Header -->
+        <div id="statusHeader" class="status-header available">
+            <div class="room-info">
+                <div class="room-name">{{ room.name }}</div>
+                <div class="status-indicator">
+                    <div class="status-dot"></div>
+                    <span id="statusText">LOADING...</span>
+                </div>
+                <div id="currentMeeting" class="current-meeting" style="display: none;"></div>
+            </div>
+            <div class="current-time" id="currentTime">--:--</div>
+        </div>
+
+        <!-- Quick Book / Actions Section -->
+        <div id="quickBookSection" class="quick-book-section">
+            <div class="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+
+        <!-- Today's Schedule -->
+        <div class="schedule-section">
+            <div class="schedule-header">
+                <div class="section-title">Today's Schedule</div>
+                <div class="schedule-date" id="scheduleDate"></div>
+            </div>
+            <div id="scheduleList" class="schedule-list">
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script>
+        // Set today's date
+        document.getElementById('scheduleDate').textContent = new Date().toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        // Initialize display
+        display = new ConferenceRoomDisplay({{ room.id }});
+    </script>
+</body>
+</html>
