@@ -532,6 +532,10 @@ class ConferenceRoomDisplay {
 
         const result = await response.json();
         this.showToast(`Created ${result.count} recurring bookings for ${name}`, 'success');
+
+        // Navigate calendar to the recurring start date to show the created events
+        this.selectedDate = new Date(startDate + 'T00:00:00');
+        this.updateDatePicker();
     }
 
     async quickBook(duration) {
