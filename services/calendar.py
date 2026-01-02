@@ -250,6 +250,73 @@ class CalendarService:
         else:
             await self._delete_local_event(event_id)
 
+    async def create_recurring_events(
+        self,
+        room_id: int,
+        title: str,
+        start_hour: int,
+        start_minute: int,
+        duration_minutes: int,
+        booker_name: str,
+        days_of_week: List[int],
+        start_date: Any,
+        end_date: Any,
+    ) -> tuple:
+        """Create recurring events for specified days of week within a date range.
+
+        Args:
+            room_id: The room ID
+            title: Event title
+            start_hour: Hour to start (0-23)
+            start_minute: Minute to start (0-59)
+            duration_minutes: Duration in minutes
+            booker_name: Name of person booking
+            days_of_week: List of day numbers (0=Sunday, 1=Monday, ..., 6=Saturday)
+            start_date: Start of date range
+            end_date: End of date range
+
+        Returns:
+            Tuple of (created_count, skipped_count)
+        """
+        created_count = 0
+        skipped_count = 0
+
+        current_date = start_date
+        while current_date <= end_date:
+            # Check if this day matches one of the selected days
+            # Python's weekday(): Monday=0, Sunday=6
+            # Our format: Sunday=0, Monday=1, ..., Saturday=6
+            python_weekday = current_date.weekday()
+            # Convert Python weekday to our format (Sunday=0)
+            our_weekday = (python_weekday + 1) % 7
+
+            if our_weekday in days_of_week:
+                # Create start and end times for this date
+                start_time = datetime.combine(
+                    current_date,
+                    datetime.min.time().replace(hour=start_hour, minute=start_minute)
+                )
+                end_time = start_time + timedelta(minutes=duration_minutes)
+
+                # Check for conflicts
+                conflicts = await self.check_conflicts(room_id, start_time, end_time)
+
+                if not conflicts:
+                    await self.create_event(
+                        room_id=room_id,
+                        title=title,
+                        start_time=start_time,
+                        end_time=end_time,
+                        booker_name=booker_name,
+                    )
+                    created_count += 1
+                else:
+                    skipped_count += 1
+
+            current_date += timedelta(days=1)
+
+        return created_count, skipped_count
+
     # ==================== Google Calendar ====================
 
     async def _get_google_events(self, calendar_id: str, target_date: Optional[Any] = None) -> List[Dict[str, Any]]:

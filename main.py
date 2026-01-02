@@ -257,6 +257,66 @@ async def cancel_booking(room_id: int, event_id: str, db: AsyncSession = Depends
     return {"success": True}
 
 
+@app.post("/api/rooms/{room_id}/book-recurring")
+async def book_recurring(
+    room_id: int,
+    title: str = "Recurring Booking",
+    start_hour: int = 9,
+    start_minute: int = 0,
+    duration_minutes: int = 540,
+    booker_name: str = None,
+    recurring_days: str = "",
+    recurring_start: str = None,
+    recurring_end: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create recurring bookings for specified days in a date range."""
+    calendar_service = CalendarService(db)
+
+    room = await calendar_service.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # Parse recurring days (comma-separated: "1,2,3" for Mon, Tue, Wed)
+    try:
+        days = [int(d.strip()) for d in recurring_days.split(",") if d.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid recurring_days format")
+
+    if not days:
+        raise HTTPException(status_code=400, detail="At least one day must be selected")
+
+    # Parse date range
+    try:
+        start_date = datetime.strptime(recurring_start, "%Y-%m-%d").date() if recurring_start else datetime.now().date()
+        end_date = datetime.strptime(recurring_end, "%Y-%m-%d").date() if recurring_end else start_date + timedelta(days=90)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    if end_date < start_date:
+        raise HTTPException(status_code=400, detail="End date must be after start date")
+
+    # Create recurring events
+    created_count, skipped_count = await calendar_service.create_recurring_events(
+        room_id=room_id,
+        title=title,
+        start_hour=start_hour,
+        start_minute=start_minute,
+        duration_minutes=duration_minutes,
+        booker_name=booker_name,
+        days_of_week=days,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    return {
+        "success": True,
+        "count": created_count,
+        "skipped": skipped_count,
+        "message": f"Created {created_count} bookings, skipped {skipped_count} due to conflicts"
+    }
+
+
 @app.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request, db: AsyncSession = Depends(get_db)):
     """Setup page for configuring rooms and calendars."""

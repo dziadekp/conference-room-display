@@ -374,9 +374,11 @@ class ConferenceRoomDisplay {
         const dateInput = document.getElementById('bookingDate');
         const timeInput = document.getElementById('bookingTime');
         const nameInput = document.getElementById('bookerName');
+        const durationInput = document.getElementById('bookingDuration');
 
         // Set default values
         dateInput.value = this.formatDateForInput(this.selectedDate);
+        durationInput.value = '30'; // Reset to default
 
         // Set default time to next 30-minute interval
         const now = new Date();
@@ -388,7 +390,36 @@ class ConferenceRoomDisplay {
         // Pre-fill booker name if saved
         nameInput.value = this.bookerName;
 
+        // Reset recurring options
+        document.getElementById('isRecurring').checked = false;
+        document.getElementById('recurringOptions').style.display = 'none';
+        document.getElementById('recurringStart').value = this.formatDateForInput(this.selectedDate);
+
+        // Set default end date to 3 months from now
+        const endDate = new Date(this.selectedDate);
+        endDate.setMonth(endDate.getMonth() + 3);
+        document.getElementById('recurringEnd').value = this.formatDateForInput(endDate);
+
+        // Uncheck all day checkboxes
+        document.querySelectorAll('.day-checkbox input').forEach(cb => cb.checked = false);
+
         modal.style.display = 'flex';
+    }
+
+    toggleRecurring() {
+        const isRecurring = document.getElementById('isRecurring').checked;
+        const options = document.getElementById('recurringOptions');
+        options.style.display = isRecurring ? 'block' : 'none';
+    }
+
+    onDurationChange() {
+        const duration = document.getElementById('bookingDuration').value;
+        const timeInput = document.getElementById('bookingTime');
+
+        if (duration === 'fullday') {
+            // Set time to 9 AM for full day
+            timeInput.value = '09:00';
+        }
     }
 
     closeModal() {
@@ -400,7 +431,8 @@ class ConferenceRoomDisplay {
         const title = document.getElementById('bookingTitle').value.trim() || 'Quick Booking';
         const date = document.getElementById('bookingDate').value;
         const time = document.getElementById('bookingTime').value;
-        const duration = parseInt(document.getElementById('bookingDuration').value);
+        const durationValue = document.getElementById('bookingDuration').value;
+        const isRecurring = document.getElementById('isRecurring').checked;
 
         if (!name) {
             this.showToast('Please enter your name', 'error');
@@ -411,34 +443,95 @@ class ConferenceRoomDisplay {
         this.bookerName = name;
         localStorage.setItem('bookerName', name);
 
-        const [hour, minute] = time.split(':').map(Number);
+        // Handle full day duration (9 AM to 6 PM = 540 minutes)
+        let duration;
+        let startHour, startMinute;
+
+        if (durationValue === 'fullday') {
+            duration = 540; // 9 hours = 540 minutes
+            startHour = 9;
+            startMinute = 0;
+        } else {
+            duration = parseInt(durationValue);
+            [startHour, startMinute] = time.split(':').map(Number);
+        }
 
         try {
-            const params = new URLSearchParams({
-                duration_minutes: duration,
-                title: title,
-                date: date,
-                start_hour: hour,
-                start_minute: minute,
-                booker_name: name
-            });
+            if (isRecurring) {
+                // Handle recurring booking
+                await this.submitRecurringBooking(name, title, startHour, startMinute, duration);
+            } else {
+                // Single booking
+                const params = new URLSearchParams({
+                    duration_minutes: duration,
+                    title: title,
+                    date: date,
+                    start_hour: startHour,
+                    start_minute: startMinute,
+                    booker_name: name
+                });
 
-            const response = await fetch(`/api/rooms/${this.roomId}/book?${params}`, {
-                method: 'POST'
-            });
+                const response = await fetch(`/api/rooms/${this.roomId}/book?${params}`, {
+                    method: 'POST'
+                });
 
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || 'Failed to book room');
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to book room');
+                }
+
+                const durationText = durationValue === 'fullday' ? 'full day' : `${duration} minutes`;
+                this.showToast(`Room booked for ${durationText} by ${name}`, 'success');
             }
 
-            this.showToast(`Room booked for ${duration} minutes by ${name}`, 'success');
             this.closeModal();
             await this.fetchData();
         } catch (error) {
             console.error('Error booking room:', error);
             this.showToast(error.message, 'error');
         }
+    }
+
+    async submitRecurringBooking(name, title, startHour, startMinute, duration) {
+        // Get selected days
+        const selectedDays = [];
+        document.querySelectorAll('.day-checkbox input:checked').forEach(cb => {
+            selectedDays.push(parseInt(cb.value));
+        });
+
+        if (selectedDays.length === 0) {
+            throw new Error('Please select at least one day for recurring booking');
+        }
+
+        const startDate = document.getElementById('recurringStart').value;
+        const endDate = document.getElementById('recurringEnd').value;
+
+        if (!startDate || !endDate) {
+            throw new Error('Please set start and end dates for recurring booking');
+        }
+
+        const params = new URLSearchParams({
+            title: title,
+            start_hour: startHour,
+            start_minute: startMinute,
+            duration_minutes: duration,
+            booker_name: name,
+            recurring_days: selectedDays.join(','),
+            recurring_start: startDate,
+            recurring_end: endDate
+        });
+
+        const response = await fetch(`/api/rooms/${this.roomId}/book-recurring?${params}`, {
+            method: 'POST'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create recurring booking');
+        }
+
+        const result = await response.json();
+        this.showToast(`Created ${result.count} recurring bookings for ${name}`, 'success');
     }
 
     async quickBook(duration) {
