@@ -23,7 +23,10 @@
         <!-- Status Header -->
         <div id="statusHeader" class="status-header available">
             <div class="room-info">
-                <div class="room-name">{{ room.name }}</div>
+                <div class="room-name-row">
+                    <div class="room-name">{{ room.name }}</div>
+                    <a href="/setup" class="settings-btn" title="Settings">⚙️</a>
+                </div>
                 <div class="status-indicator">
                     <div class="status-dot"></div>
                     <span id="statusText">LOADING...</span>

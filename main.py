@@ -243,6 +243,20 @@ async def end_meeting(room_id: int, db: AsyncSession = Depends(get_db)):
     return {"success": True}
 
 
+@app.delete("/api/rooms/{room_id}/events/{event_id}")
+async def cancel_booking(room_id: int, event_id: str, db: AsyncSession = Depends(get_db)):
+    """Cancel/delete a booking."""
+    calendar_service = CalendarService(db)
+
+    room = await calendar_service.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    await calendar_service.delete_event(room_id=room_id, event_id=event_id)
+
+    return {"success": True}
+
+
 @app.get("/setup", response_class=HTMLResponse)
 async def setup_page(request: Request, db: AsyncSession = Depends(get_db)):
     """Setup page for configuring rooms and calendars."""

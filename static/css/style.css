@@ -71,10 +71,27 @@ html, body {
     gap: 8px;
 }
 
+.room-name-row {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
 .room-name {
     font-size: 2.5rem;
     font-weight: 700;
     letter-spacing: -0.5px;
+}
+
+.settings-btn {
+    font-size: 1.5rem;
+    text-decoration: none;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+}
+
+.settings-btn:hover {
+    opacity: 1;
 }
 
 .status-text {
@@ -334,6 +351,42 @@ html, body {
     font-weight: 500;
     color: var(--text-secondary);
     text-align: right;
+}
+
+.event-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.cancel-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background: rgba(231, 76, 60, 0.1);
+    color: #e74c3c;
+    border-radius: 50%;
+    font-size: 1.4rem;
+    font-weight: 300;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    opacity: 0.6;
+    line-height: 1;
+    padding: 0;
+}
+
+.cancel-btn:hover {
+    background: #e74c3c;
+    color: white;
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.cancel-btn:active {
+    transform: scale(0.95);
 }
 
 /* Available Slot */

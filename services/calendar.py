@@ -237,6 +237,19 @@ class CalendarService:
         else:
             await self._end_local_event(event_id)
 
+    async def delete_event(self, room_id: int, event_id: str):
+        """Delete/cancel an event."""
+        room = await self.get_room(room_id)
+        if not room:
+            raise ValueError("Room not found")
+
+        if room["calendar_provider"] == "google":
+            await self._delete_google_event(room["calendar_id"], event_id)
+        elif room["calendar_provider"] == "microsoft":
+            await self._delete_microsoft_event(room["calendar_id"], event_id)
+        else:
+            await self._delete_local_event(event_id)
+
     # ==================== Google Calendar ====================
 
     async def _get_google_events(self, calendar_id: str, target_date: Optional[Any] = None) -> List[Dict[str, Any]]:
@@ -383,6 +396,21 @@ class CalendarService:
             calendarId=calendar_id or "primary",
             eventId=event_id,
             body=event,
+        ).execute()
+
+    async def _delete_google_event(self, calendar_id: str, event_id: str):
+        """Delete a Google Calendar event."""
+        from auth.google import get_google_credentials
+
+        credentials = await get_google_credentials(self.db)
+        if not credentials:
+            raise ValueError("Google Calendar not connected")
+
+        service = build("calendar", "v3", credentials=credentials)
+
+        service.events().delete(
+            calendarId=calendar_id or "primary",
+            eventId=event_id,
         ).execute()
 
     # ==================== Microsoft Calendar ====================
@@ -582,6 +610,25 @@ class CalendarService:
                 json=update_data,
             )
 
+    async def _delete_microsoft_event(self, calendar_id: str, event_id: str):
+        """Delete a Microsoft Calendar event."""
+        from auth.microsoft import get_microsoft_token
+
+        token = await get_microsoft_token(self.db)
+        if not token:
+            raise ValueError("Microsoft Calendar not connected")
+
+        if calendar_id:
+            url = f"https://graph.microsoft.com/v1.0/me/calendars/{calendar_id}/events/{event_id}"
+        else:
+            url = f"https://graph.microsoft.com/v1.0/me/calendar/events/{event_id}"
+
+        async with httpx.AsyncClient() as client:
+            await client.delete(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
     # ==================== Local Events ====================
 
     async def _get_local_events(self, room_id: int, target_date: Optional[Any] = None) -> List[Dict[str, Any]]:
@@ -672,6 +719,17 @@ class CalendarService:
 
         if event:
             event.end_time = datetime.now()
+            await self.db.commit()
+
+    async def _delete_local_event(self, event_id: str):
+        """Delete a local event."""
+        result = await self.db.execute(
+            select(LocalEvent).where(LocalEvent.id == int(event_id))
+        )
+        event = result.scalar_one_or_none()
+
+        if event:
+            await self.db.delete(event)
             await self.db.commit()
 
     # ==================== Helpers ====================

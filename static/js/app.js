@@ -292,10 +292,15 @@ class ConferenceRoomDisplay {
                             <div class="event-title">${this.escapeHtml(event.title)}</div>
                             ${event.organizer ? `<div class="event-organizer">${this.escapeHtml(event.organizer)}</div>` : ''}
                         </div>
-                        <div class="event-time">
-                            ${startStr}<br>
-                            <span style="opacity: 0.6">to</span><br>
-                            ${endStr}
+                        <div class="event-actions">
+                            <div class="event-time">
+                                ${startStr}<br>
+                                <span style="opacity: 0.6">to</span><br>
+                                ${endStr}
+                            </div>
+                            <button class="cancel-btn" onclick="event.stopPropagation(); display.cancelBooking('${event.id}', '${this.escapeHtml(event.title).replace(/'/g, "\\'")}');" title="Cancel booking">
+                                &times;
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -554,6 +559,27 @@ class ConferenceRoomDisplay {
             await this.fetchData();
         } catch (error) {
             console.error('Error ending meeting:', error);
+            this.showToast(error.message, 'error');
+        }
+    }
+
+    async cancelBooking(eventId, eventTitle) {
+        if (!confirm(`Cancel booking "${eventTitle}"?`)) return;
+
+        try {
+            const response = await fetch(`/api/rooms/${this.roomId}/events/${eventId}`, {
+                method: 'DELETE'
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to cancel booking');
+            }
+
+            this.showToast('Booking cancelled', 'success');
+            await this.fetchData();
+        } catch (error) {
+            console.error('Error cancelling booking:', error);
             this.showToast(error.message, 'error');
         }
     }
