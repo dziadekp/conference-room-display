@@ -128,6 +128,52 @@ class CalendarService:
 
         return None
 
+    async def get_events_for_date(self, room_id: int, target_date: Optional[Any] = None) -> List[Dict[str, Any]]:
+        """Get all events for a specific date."""
+        if target_date is None:
+            target_date = datetime.now().date()
+
+        room = await self.get_room(room_id)
+        if not room:
+            return []
+
+        if room["calendar_provider"] == "google":
+            return await self._get_google_events(room["calendar_id"], target_date)
+        elif room["calendar_provider"] == "microsoft":
+            return await self._get_microsoft_events(room["calendar_id"], target_date)
+        else:
+            return await self._get_local_events(room_id, target_date)
+
+    async def get_events_for_week(self, room_id: int, start_date: Any = None) -> Dict[str, List[Dict[str, Any]]]:
+        """Get events for a full week starting from start_date."""
+        if start_date is None:
+            start_date = datetime.now().date()
+
+        week_events = {}
+        for i in range(7):
+            current_date = start_date + timedelta(days=i)
+            date_str = current_date.isoformat()
+            week_events[date_str] = await self.get_events_for_date(room_id, current_date)
+
+        return week_events
+
+    async def check_conflicts(self, room_id: int, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
+        """Check if a time range conflicts with existing events."""
+        target_date = start_time.date()
+        events = await self.get_events_for_date(room_id, target_date)
+
+        conflicts = []
+        for event in events:
+            event_start = self._parse_datetime(event.get("start"))
+            event_end = self._parse_datetime(event.get("end"))
+
+            if event_start and event_end:
+                # Check for overlap
+                if start_time < event_end and end_time > event_start:
+                    conflicts.append(event)
+
+        return conflicts
+
     # ==================== Event Creation ====================
 
     async def create_event(
@@ -136,6 +182,7 @@ class CalendarService:
         title: str,
         start_time: datetime,
         end_time: datetime,
+        booker_name: str = None,
     ) -> Dict[str, Any]:
         """Create a new event."""
         room = await self.get_room(room_id)
@@ -144,15 +191,15 @@ class CalendarService:
 
         if room["calendar_provider"] == "google":
             return await self._create_google_event(
-                room["calendar_id"], title, start_time, end_time
+                room["calendar_id"], title, start_time, end_time, booker_name
             )
         elif room["calendar_provider"] == "microsoft":
             return await self._create_microsoft_event(
-                room["calendar_id"], title, start_time, end_time
+                room["calendar_id"], title, start_time, end_time, booker_name
             )
         else:
             return await self._create_local_event(
-                room_id, title, start_time, end_time
+                room_id, title, start_time, end_time, booker_name
             )
 
     async def extend_event(
@@ -192,7 +239,7 @@ class CalendarService:
 
     # ==================== Google Calendar ====================
 
-    async def _get_google_events(self, calendar_id: str) -> List[Dict[str, Any]]:
+    async def _get_google_events(self, calendar_id: str, target_date: Optional[Any] = None) -> List[Dict[str, Any]]:
         """Get events from Google Calendar."""
         from auth.google import get_google_credentials
 
@@ -203,14 +250,16 @@ class CalendarService:
         try:
             service = build("calendar", "v3", credentials=credentials)
 
-            # Get today's date range
-            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            tomorrow = today + timedelta(days=1)
+            # Get date range for target date
+            if target_date is None:
+                target_date = datetime.now().date()
+            day_start = datetime.combine(target_date, datetime.min.time())
+            day_end = day_start + timedelta(days=1)
 
             events_result = service.events().list(
                 calendarId=calendar_id or "primary",
-                timeMin=today.isoformat() + "Z",
-                timeMax=tomorrow.isoformat() + "Z",
+                timeMin=day_start.isoformat() + "Z",
+                timeMax=day_end.isoformat() + "Z",
                 singleEvents=True,
                 orderBy="startTime",
             ).execute()
@@ -238,6 +287,7 @@ class CalendarService:
         title: str,
         start_time: datetime,
         end_time: datetime,
+        booker_name: str = None,
     ) -> Dict[str, Any]:
         """Create event in Google Calendar."""
         from auth.google import get_google_credentials
@@ -248,8 +298,12 @@ class CalendarService:
 
         service = build("calendar", "v3", credentials=credentials)
 
+        # Add booker name to title or description
+        display_title = f"{title} - {booker_name}" if booker_name else title
+
         event = {
-            "summary": title,
+            "summary": display_title,
+            "description": f"Booked by: {booker_name}" if booker_name else "",
             "start": {"dateTime": start_time.isoformat(), "timeZone": "UTC"},
             "end": {"dateTime": end_time.isoformat(), "timeZone": "UTC"},
         }
@@ -333,7 +387,7 @@ class CalendarService:
 
     # ==================== Microsoft Calendar ====================
 
-    async def _get_microsoft_events(self, calendar_id: str) -> List[Dict[str, Any]]:
+    async def _get_microsoft_events(self, calendar_id: str, target_date: Optional[Any] = None) -> List[Dict[str, Any]]:
         """Get events from Microsoft Calendar."""
         from auth.microsoft import get_microsoft_token
 
@@ -342,8 +396,11 @@ class CalendarService:
             return []
 
         try:
-            today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-            tomorrow = today + timedelta(days=1)
+            # Get date range for target date
+            if target_date is None:
+                target_date = datetime.now().date()
+            day_start = datetime.combine(target_date, datetime.min.time())
+            day_end = day_start + timedelta(days=1)
 
             # Use calendar_id if provided, otherwise use default calendar
             if calendar_id:
@@ -352,7 +409,7 @@ class CalendarService:
                 url = "https://graph.microsoft.com/v1.0/me/calendar/events"
 
             params = {
-                "$filter": f"start/dateTime ge '{today.isoformat()}' and start/dateTime lt '{tomorrow.isoformat()}'",
+                "$filter": f"start/dateTime ge '{day_start.isoformat()}' and start/dateTime lt '{day_end.isoformat()}'",
                 "$orderby": "start/dateTime",
                 "$top": 50,
             }
@@ -393,6 +450,7 @@ class CalendarService:
         title: str,
         start_time: datetime,
         end_time: datetime,
+        booker_name: str = None,
     ) -> Dict[str, Any]:
         """Create event in Microsoft Calendar."""
         from auth.microsoft import get_microsoft_token
@@ -406,8 +464,12 @@ class CalendarService:
         else:
             url = "https://graph.microsoft.com/v1.0/me/calendar/events"
 
+        # Add booker name to title or body
+        display_title = f"{title} - {booker_name}" if booker_name else title
+
         event = {
-            "subject": title,
+            "subject": display_title,
+            "body": {"contentType": "text", "content": f"Booked by: {booker_name}" if booker_name else ""},
             "start": {"dateTime": start_time.isoformat(), "timeZone": "UTC"},
             "end": {"dateTime": end_time.isoformat(), "timeZone": "UTC"},
         }
@@ -522,17 +584,19 @@ class CalendarService:
 
     # ==================== Local Events ====================
 
-    async def _get_local_events(self, room_id: int) -> List[Dict[str, Any]]:
+    async def _get_local_events(self, room_id: int, target_date: Optional[Any] = None) -> List[Dict[str, Any]]:
         """Get events from local database."""
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        tomorrow = today + timedelta(days=1)
+        if target_date is None:
+            target_date = datetime.now().date()
+        day_start = datetime.combine(target_date, datetime.min.time())
+        day_end = day_start + timedelta(days=1)
 
         result = await self.db.execute(
             select(LocalEvent).where(
                 and_(
                     LocalEvent.room_id == room_id,
-                    LocalEvent.start_time >= today,
-                    LocalEvent.start_time < tomorrow,
+                    LocalEvent.start_time >= day_start,
+                    LocalEvent.start_time < day_end,
                 )
             ).order_by(LocalEvent.start_time)
         )
@@ -557,6 +621,7 @@ class CalendarService:
         title: str,
         start_time: datetime,
         end_time: datetime,
+        booker_name: str = None,
     ) -> Dict[str, Any]:
         """Create a local event."""
         event = LocalEvent(
@@ -564,6 +629,7 @@ class CalendarService:
             title=title,
             start_time=start_time,
             end_time=end_time,
+            organizer=booker_name,
         )
         self.db.add(event)
         await self.db.commit()
@@ -574,6 +640,7 @@ class CalendarService:
             "title": event.title,
             "start": event.start_time.isoformat(),
             "end": event.end_time.isoformat(),
+            "organizer": event.organizer or "",
         }
 
     async def _extend_local_event(self, event_id: str, minutes: int) -> Dict[str, Any]:

@@ -714,3 +714,450 @@ html, body {
         flex: 1 1 55%;
     }
 }
+
+/* ============================================
+   View Toggle & Date Navigation
+   ============================================ */
+
+.view-toggle {
+    display: flex;
+    background: var(--border);
+    border-radius: 10px;
+    padding: 4px;
+}
+
+.view-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.view-btn:hover {
+    color: var(--text-primary);
+}
+
+.view-btn.active {
+    background: white;
+    color: var(--primary);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.date-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.nav-btn {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: white;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.nav-btn:active {
+    transform: scale(0.95);
+}
+
+.nav-btn.today-btn {
+    width: auto;
+    padding: 0 15px;
+    font-size: 0.9rem;
+}
+
+.date-picker {
+    padding: 10px 15px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.date-picker:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+/* ============================================
+   Week View
+   ============================================ */
+
+.view-container {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.week-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 10px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.week-day {
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    min-height: 200px;
+}
+
+.week-day.today {
+    background: var(--primary);
+    color: white;
+}
+
+.week-day.today .day-header {
+    color: white;
+}
+
+.week-day.today .day-date {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.day-header {
+    text-align: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.week-day.today .day-header {
+    border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+.day-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+}
+
+.week-day.today .day-name {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.day-date {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-top: 4px;
+}
+
+.day-events {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+}
+
+.week-event {
+    background: white;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    border-left: 3px solid var(--primary);
+}
+
+.week-day.today .week-event {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--text-primary);
+}
+
+.week-event .event-title {
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.week-event .event-time {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+}
+
+.no-events-day {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 10px;
+    opacity: 0.6;
+}
+
+.week-day.today .no-events-day {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+/* ============================================
+   Booking Modal
+   ============================================ */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 20px;
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 25px 30px;
+    border-bottom: 1px solid var(--border);
+}
+
+.modal-header h2 {
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.close-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: var(--border);
+    font-size: 1.5rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-btn:hover {
+    background: var(--occupied-light);
+    color: var(--occupied);
+}
+
+.modal-body {
+    padding: 25px 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.modal-footer {
+    display: flex;
+    gap: 15px;
+    padding: 20px 30px;
+    border-top: 1px solid var(--border);
+    background: #f8fafc;
+    border-radius: 0 0 20px 20px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+/* Modal Form Inputs */
+.modal-body .form-group input,
+.modal-body .form-group select {
+    width: 100%;
+    padding: 14px 16px;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    font-size: 1rem;
+    transition: border-color 0.2s ease;
+}
+
+.modal-body .form-group input:focus,
+.modal-body .form-group select:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
+.modal-body .form-group input::placeholder {
+    color: #94a3b8;
+}
+
+/* ============================================
+   Buttons
+   ============================================ */
+
+.btn {
+    padding: 14px 28px;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex: 1;
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn.primary {
+    background: var(--primary);
+    color: white;
+}
+
+.btn.primary:hover {
+    background: var(--primary-dark);
+}
+
+.btn.secondary {
+    background: var(--border);
+    color: var(--text-primary);
+}
+
+.btn.secondary:hover {
+    background: #cbd5e1;
+}
+
+/* Outline button for schedule later */
+.book-btn.outline {
+    background: transparent;
+    border: 2px solid var(--primary);
+    color: var(--primary);
+}
+
+.book-btn.outline:hover {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+/* Quick book rows layout */
+.quick-book-row {
+    display: flex;
+    gap: 15px;
+}
+
+.quick-book-row + .quick-book-row {
+    margin-top: 15px;
+}
+
+/* Schedule later button */
+.schedule-later {
+    width: 100%;
+    margin-top: 10px;
+}
+
+/* Name prompt styling */
+.name-prompt {
+    background: var(--upcoming-light);
+    border: 2px solid var(--upcoming);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 15px;
+}
+
+.name-prompt p {
+    margin-bottom: 10px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.name-prompt input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+}
+
+.name-prompt input:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
+/* ============================================
+   Responsive Adjustments for New Components
+   ============================================ */
+
+@media (max-width: 768px) {
+    .schedule-header {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+    }
+
+    .view-toggle {
+        justify-content: center;
+    }
+
+    .date-nav {
+        justify-content: center;
+    }
+
+    .week-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .week-day {
+        min-height: 150px;
+    }
+
+    .modal-content {
+        max-width: 100%;
+        margin: 10px;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .modal-footer {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .week-grid {
+        grid-template-columns: 1fr;
+    }
+}

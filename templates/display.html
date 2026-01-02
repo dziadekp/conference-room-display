@@ -40,29 +40,91 @@
             </div>
         </div>
 
-        <!-- Today's Schedule -->
+        <!-- Schedule Section -->
         <div class="schedule-section">
             <div class="schedule-header">
-                <div class="section-title">Today's Schedule</div>
-                <div class="schedule-date" id="scheduleDate"></div>
-            </div>
-            <div id="scheduleList" class="schedule-list">
-                <div class="loading">
-                    <div class="spinner"></div>
+                <div class="view-toggle">
+                    <button id="todayViewBtn" class="view-btn active" onclick="display.switchView('today')">Today</button>
+                    <button id="weekViewBtn" class="view-btn" onclick="display.switchView('week')">Week</button>
                 </div>
+                <div class="date-nav">
+                    <button class="nav-btn" onclick="display.navigateDate(-1)">&lt;</button>
+                    <input type="date" id="datePicker" class="date-picker" onchange="display.setDate(this.value)">
+                    <button class="nav-btn" onclick="display.navigateDate(1)">&gt;</button>
+                    <button class="nav-btn today-btn" onclick="display.goToToday()">Today</button>
+                </div>
+            </div>
+
+            <!-- Today View -->
+            <div id="todayView" class="view-container">
+                <div class="schedule-date" id="scheduleDate"></div>
+                <div id="scheduleList" class="schedule-list">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Week View -->
+            <div id="weekView" class="view-container" style="display: none;">
+                <div id="weekGrid" class="week-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Booking Modal -->
+    <div id="bookingModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Book Room</h2>
+                <button class="close-btn" onclick="display.closeModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="bookerName">Your Name *</label>
+                    <input type="text" id="bookerName" placeholder="Enter your full name" required>
+                </div>
+                <div class="form-group">
+                    <label for="bookingTitle">Meeting Title</label>
+                    <input type="text" id="bookingTitle" placeholder="Quick Booking" value="Quick Booking">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="bookingDate">Date</label>
+                        <input type="date" id="bookingDate">
+                    </div>
+                    <div class="form-group">
+                        <label for="bookingTime">Start Time</label>
+                        <input type="time" id="bookingTime">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="bookingDuration">Duration</label>
+                    <select id="bookingDuration">
+                        <option value="15">15 minutes</option>
+                        <option value="30" selected>30 minutes</option>
+                        <option value="45">45 minutes</option>
+                        <option value="60">1 hour</option>
+                        <option value="90">1.5 hours</option>
+                        <option value="120">2 hours</option>
+                        <option value="180">3 hours</option>
+                        <option value="240">4 hours</option>
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn secondary" onclick="display.closeModal()">Cancel</button>
+                <button class="btn primary" onclick="display.submitBooking()">Book Room</button>
             </div>
         </div>
     </div>
 
     <script src="/static/js/app.js"></script>
     <script>
-        // Set today's date
-        document.getElementById('scheduleDate').textContent = new Date().toLocaleDateString('en-US', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric'
-        });
-
         // Initialize display
         display = new ConferenceRoomDisplay({{ room.id }});
     </script>

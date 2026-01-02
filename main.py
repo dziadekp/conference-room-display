@@ -79,17 +79,29 @@ async def list_rooms(db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/api/rooms/{room_id}/events")
-async def get_room_events(room_id: int, db: AsyncSession = Depends(get_db)):
-    """Get today's events for a room."""
+async def get_room_events(
+    room_id: int,
+    date: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get events for a room on a specific date (default: today)."""
     calendar_service = CalendarService(db)
 
     room = await calendar_service.get_room(room_id)
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    events = await calendar_service.get_todays_events(room_id)
-    current_event = await calendar_service.get_current_event(room_id)
-    next_event = await calendar_service.get_next_event(room_id)
+    # Parse date or use today
+    target_date = None
+    if date:
+        try:
+            target_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+
+    events = await calendar_service.get_events_for_date(room_id, target_date)
+    current_event = await calendar_service.get_current_event(room_id) if not target_date or target_date == datetime.now().date() else None
+    next_event = await calendar_service.get_next_event(room_id) if not target_date or target_date == datetime.now().date() else None
 
     return {
         "room": room,
@@ -97,6 +109,40 @@ async def get_room_events(room_id: int, db: AsyncSession = Depends(get_db)):
         "current_event": current_event,
         "next_event": next_event,
         "is_available": current_event is None,
+        "server_time": datetime.now().isoformat(),
+        "date": (target_date or datetime.now().date()).isoformat(),
+    }
+
+
+@app.get("/api/rooms/{room_id}/week")
+async def get_room_week_events(
+    room_id: int,
+    start_date: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get events for a room for the week."""
+    calendar_service = CalendarService(db)
+
+    room = await calendar_service.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # Parse start date or use today
+    if start_date:
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    else:
+        start = datetime.now().date()
+
+    # Get events for 7 days
+    week_events = await calendar_service.get_events_for_week(room_id, start)
+
+    return {
+        "room": room,
+        "week_events": week_events,
+        "start_date": start.isoformat(),
         "server_time": datetime.now().isoformat(),
     }
 
@@ -106,35 +152,45 @@ async def book_room(
     room_id: int,
     duration_minutes: int = 30,
     title: str = "Quick Booking",
+    date: str = None,
+    start_hour: int = None,
+    start_minute: int = 0,
+    booker_name: str = None,
     db: AsyncSession = Depends(get_db)
 ):
-    """Quick book a room for the specified duration."""
+    """Book a room for the specified duration on a specific date/time."""
     calendar_service = CalendarService(db)
 
     room = await calendar_service.get_room(room_id)
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    # Check if room is available
-    current_event = await calendar_service.get_current_event(room_id)
-    if current_event:
-        raise HTTPException(status_code=400, detail="Room is currently occupied")
+    # Determine start time
+    if date and start_hour is not None:
+        # Booking for a specific date and time
+        try:
+            target_date = datetime.strptime(date, "%Y-%m-%d").date()
+            start_time = datetime.combine(target_date, datetime.min.time().replace(hour=start_hour, minute=start_minute))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    else:
+        # Booking for now
+        start_time = datetime.now()
 
-    # Check if booking conflicts with next event
-    next_event = await calendar_service.get_next_event(room_id)
-    start_time = datetime.now()
+        # Check if room is currently available
+        current_event = await calendar_service.get_current_event(room_id)
+        if current_event:
+            raise HTTPException(status_code=400, detail="Room is currently occupied")
+
     end_time = start_time + timedelta(minutes=duration_minutes)
 
-    if next_event and next_event.get("start"):
-        next_start = datetime.fromisoformat(next_event["start"].replace("Z", "+00:00"))
-        if end_time > next_start.replace(tzinfo=None):
-            # Adjust end time to not conflict
-            end_time = next_start.replace(tzinfo=None)
-            if (end_time - start_time).total_seconds() < 300:  # Less than 5 minutes
-                raise HTTPException(
-                    status_code=400,
-                    detail="Not enough time before next meeting"
-                )
+    # Check for conflicts with existing events
+    conflicts = await calendar_service.check_conflicts(room_id, start_time, end_time)
+    if conflicts:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Conflicts with existing booking: {conflicts[0].get('title', 'Busy')}"
+        )
 
     # Create the booking
     event = await calendar_service.create_event(
@@ -142,6 +198,7 @@ async def book_room(
         title=title,
         start_time=start_time,
         end_time=end_time,
+        booker_name=booker_name,
     )
 
     return {"success": True, "event": event}
