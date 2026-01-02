@@ -104,7 +104,7 @@ class ConferenceRoomDisplay {
                 <div class="quick-book-buttons">
                     <button class="book-btn primary" onclick="display.bookRoom(15)">
                         15 min
-                        <span class="duration">Quick meeting</span>
+                        <span class="duration">Quick</span>
                     </button>
                     <button class="book-btn primary" onclick="display.bookRoom(30)">
                         30 min
@@ -113,6 +113,10 @@ class ConferenceRoomDisplay {
                     <button class="book-btn secondary" onclick="display.bookRoom(60)">
                         1 hour
                         <span class="duration">Extended</span>
+                    </button>
+                    <button class="book-btn fullday" onclick="display.bookFullDay()">
+                        Full Day
+                        <span class="duration">Until 6 PM</span>
                     </button>
                 </div>
             `;
@@ -209,6 +213,45 @@ class ConferenceRoomDisplay {
             await this.fetchData();
         } catch (error) {
             console.error('Error booking room:', error);
+            this.showToast(error.message, 'error');
+        }
+    }
+
+    async bookFullDay() {
+        // Calculate minutes until 6 PM (18:00)
+        const now = new Date();
+        const endOfDay = new Date(now);
+        endOfDay.setHours(18, 0, 0, 0); // 6 PM
+
+        // If it's already past 6 PM, book until midnight
+        if (now >= endOfDay) {
+            endOfDay.setHours(23, 59, 0, 0);
+        }
+
+        const durationMinutes = Math.round((endOfDay - now) / 60000);
+
+        if (durationMinutes < 15) {
+            this.showToast('Not enough time left today', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/rooms/${this.roomId}/book?duration_minutes=${durationMinutes}&title=Full Day Booking`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Failed to book room');
+            }
+
+            const hours = Math.floor(durationMinutes / 60);
+            const mins = durationMinutes % 60;
+            const timeStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+            this.showToast(`Room booked for ${timeStr} (until 6 PM)`, 'success');
+            await this.fetchData();
+        } catch (error) {
+            console.error('Error booking full day:', error);
             this.showToast(error.message, 'error');
         }
     }

@@ -188,6 +188,15 @@ html, body {
     background: #cbd5e1;
 }
 
+.book-btn.fullday {
+    background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+    color: white;
+}
+
+.book-btn.fullday:hover {
+    background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+}
+
 .book-btn .duration {
     font-size: 0.9rem;
     opacity: 0.8;
