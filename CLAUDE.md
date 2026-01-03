@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Conference Room Calendar Display - a tablet-friendly web application for displaying and managing conference room schedules. Supports standalone local events or integration with Google/Microsoft 365 calendars.
 
+Also includes **Digital Signage** feature for displaying promotional content (images, videos) on smart TVs in a continuous loop.
+
 ## Development Commands
 
 ```bash
@@ -36,6 +38,14 @@ source venv/bin/activate
   - `/api/rooms/{room_id}/book` - Create booking with conflict detection
   - `/api/rooms/{room_id}/book-recurring` - Create recurring bookings
 
+  **Digital Signage Routes:**
+  - `/signage/{display_id}` - Full-screen signage display (for TVs)
+  - `/api/signage` - GET: List all displays, POST: Create new display
+  - `/api/signage/{display_id}` - DELETE: Remove display
+  - `/api/signage/{display_id}/playlist` - GET: Get media items for display
+  - `/api/signage/{display_id}/media` - POST: Upload media file (50MB max)
+  - `/api/signage/{display_id}/media/{media_id}` - DELETE: Remove media item
+
 ### Calendar Provider Pattern
 The `CalendarService` class (`services/calendar.py`) uses a provider abstraction:
 - Checks `room.calendar_provider` to route to Google, Microsoft, or local storage
@@ -59,6 +69,8 @@ The `CalendarService` class (`services/calendar.py`) uses a provider abstraction
 - `Room` - Conference room configuration (name, calendar_id, provider)
 - `CalendarToken` - OAuth tokens for Google/Microsoft
 - `LocalEvent` - Events for rooms without external calendar
+- `SignageDisplay` - Digital signage display configuration (name, is_active)
+- `MediaItem` - Media items for signage (filename, media_type, duration, order)
 
 ## Key Behaviors
 
@@ -66,6 +78,15 @@ The `CalendarService` class (`services/calendar.py`) uses a provider abstraction
 - **Full-Day Bookings**: Events 8+ hours are displayed as "Full Day" with special styling
 - **Provider Fallback**: Rooms without calendar_provider use local SQLite storage
 - **Token Refresh**: OAuth tokens auto-refresh on API calls when expired
+
+### Digital Signage
+- **Full-Screen Display**: `/signage/{display_id}` renders full-screen slideshow optimized for TVs
+- **Media Support**: Images (JPG, PNG, GIF) and videos (MP4, WebM), max 50MB per file
+- **Auto-Advance**: Images show for configurable duration, videos play to completion
+- **Smooth Transitions**: 1-second fade transitions between media items
+- **Audio Handling**: Videos muted by default (browser autoplay policy), click "Unmute" button to enable sound
+- **Auto-Refresh Playlist**: Player checks for new content every 60 seconds
+- **File Storage**: Uploaded media stored in `static/uploads/` with UUID-prefixed filenames
 
 ## Environment Variables
 
@@ -85,3 +106,23 @@ MICROSOFT_TENANT_ID=common     # 'common' for multi-tenant
 The app is designed for self-hosting. Uses SQLite by default (zero-config), or PostgreSQL for production. See `render.yaml` for Render deployment blueprint.
 
 For tablet display: Open `/display/{room_id}` in Safari/Chrome and enable kiosk mode or Guided Access.
+
+For digital signage: Open `/signage/{display_id}` on a smart TV browser. Use full-screen mode (F11) for best experience. Click "Click for Sound" button to enable audio on videos.
+
+### Server Deployment (Linux)
+The app runs on a Linux server at IP 10.1.10.66 (local) / 100.66.246.62 (Tailscale).
+
+```bash
+# Service management
+sudo systemctl status conference-room-display
+sudo systemctl restart conference-room-display
+sudo systemctl stop conference-room-display
+
+# View logs
+sudo journalctl -u conference-room-display -f
+
+# Deploy updates
+cd /opt/conference-room-display
+git pull origin main
+sudo systemctl restart conference-room-display
+```
