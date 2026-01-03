@@ -110,9 +110,24 @@ For tablet display: Open `/display/{room_id}` in Safari/Chrome and enable kiosk 
 For digital signage: Open `/signage/{display_id}` on a smart TV browser. Use full-screen mode (F11) for best experience. Click "Click for Sound" button to enable audio on videos.
 
 ### Server Deployment (Linux)
-The app runs on a Linux server at IP 10.1.10.66 (local) / 100.66.246.62 (Tailscale).
+The app runs on a Linux server (ptnminiserver) with these permanent URLs:
+
+**Local Network Access (same network as server):**
+- Calendar Display: `http://10.1.10.66:8000/display/1`
+- Digital Signage: `http://10.1.10.66:8000/signage/1`
+- Setup Page: `http://10.1.10.66:8000/setup`
+
+**Tailscale Access (from any Tailscale device):**
+- Calendar Display: `http://100.66.246.62:8000/display/1`
+- Digital Signage: `http://100.66.246.62:8000/signage/1`
+- Setup Page: `http://100.66.246.62:8000/setup`
+
+These URLs are permanent as long as the server is running.
 
 ```bash
+# SSH to server
+ssh 100.66.246.62
+
 # Service management
 sudo systemctl status conference-room-display
 sudo systemctl restart conference-room-display
@@ -122,7 +137,7 @@ sudo systemctl stop conference-room-display
 sudo journalctl -u conference-room-display -f
 
 # Deploy updates
-cd /opt/conference-room-display
+cd /home/dziadek_ptn/conference-room-display
 git pull origin main
 sudo systemctl restart conference-room-display
 ```
