@@ -162,14 +162,15 @@
                     <div style="margin-bottom: 20px;">
                         <h3 style="margin-bottom: 10px;">Upload Media</h3>
                         <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 10px;">
-                            Supported: JPG, PNG, GIF, MP4, WebM (max 50MB)
+                            Supported: JPG, PNG, GIF, MP4, WebM, PowerPoint (PPT/PPTX) - max 50MB
                         </p>
-                        <input type="file" id="mediaFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.webm" style="margin-bottom: 10px;">
-                        <div style="display: flex; gap: 10px; align-items: center;">
-                            <label for="mediaDuration" style="white-space: nowrap;">Image duration (seconds):</label>
+                        <input type="file" id="mediaFileInput" accept=".jpg,.jpeg,.png,.gif,.mp4,.webm,.ppt,.pptx" style="margin-bottom: 10px;">
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <label for="mediaDuration" style="white-space: nowrap;">Image/Slide duration (sec):</label>
                             <input type="number" id="mediaDuration" value="10" min="1" max="120" style="width: 80px;">
-                            <button class="book-btn primary" onclick="uploadMedia()" style="padding: 8px 20px;">Upload</button>
+                            <button class="book-btn primary" onclick="uploadMedia()" id="uploadBtn" style="padding: 8px 20px;">Upload</button>
                         </div>
+                        <p id="uploadStatus" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 10px; display: none;"></p>
                     </div>
                     <div>
                         <h3 style="margin-bottom: 10px;">Playlist</h3>
@@ -321,27 +322,78 @@ MICROSOFT_TENANT_ID=common  # or your tenant ID</pre>
                 return;
             }
 
-            container.innerHTML = items.map(item => `
-                <div style="display: flex; align-items: center; gap: 10px; padding: 10px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px;">
-                    <div style="width: 60px; height: 40px; background: #e2e8f0; border-radius: 4px; overflow: hidden;">
+            // Sort items by order
+            items.sort((a, b) => a.order - b.order);
+
+            container.innerHTML = items.map((item, index) => `
+                <div style="display: flex; align-items: center; gap: 8px; padding: 10px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px;" data-id="${item.id}">
+                    <!-- Order controls -->
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        <button onclick="moveMedia(${item.id}, 'up')"
+                                style="background: ${index === 0 ? '#e2e8f0' : '#3b82f6'}; color: white; border: none; width: 24px; height: 20px; border-radius: 3px; cursor: ${index === 0 ? 'not-allowed' : 'pointer'}; font-size: 12px;"
+                                ${index === 0 ? 'disabled' : ''}>▲</button>
+                        <button onclick="moveMedia(${item.id}, 'down')"
+                                style="background: ${index === items.length - 1 ? '#e2e8f0' : '#3b82f6'}; color: white; border: none; width: 24px; height: 20px; border-radius: 3px; cursor: ${index === items.length - 1 ? 'not-allowed' : 'pointer'}; font-size: 12px;"
+                                ${index === items.length - 1 ? 'disabled' : ''}>▼</button>
+                    </div>
+                    <!-- Order number badge -->
+                    <div style="background: #1e293b; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold;">
+                        ${index + 1}
+                    </div>
+                    <!-- Thumbnail -->
+                    <div style="width: 60px; height: 40px; background: #e2e8f0; border-radius: 4px; overflow: hidden; flex-shrink: 0;">
                         ${item.media_type === 'video'
                             ? `<video src="${item.url}" style="width: 100%; height: 100%; object-fit: cover;"></video>`
                             : `<img src="${item.url}" style="width: 100%; height: 100%; object-fit: cover;">`
                         }
                     </div>
+                    <!-- Info -->
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            ${item.filename.split('_').slice(1).join('_') || item.filename}
+                        <div style="font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            ${getDisplayFilename(item.filename)}
                         </div>
                         <div style="font-size: 0.75rem; color: var(--text-secondary);">
                             ${item.media_type === 'video' ? 'Video' : `Image (${item.duration}s)`}
                         </div>
                     </div>
-                    <button onclick="deleteMedia(${item.id})" style="background: #fee2e2; color: #dc2626; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer;">
+                    <!-- Delete button -->
+                    <button onclick="deleteMedia(${item.id})" style="background: #fee2e2; color: #dc2626; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; flex-shrink: 0;">
                         Delete
                     </button>
                 </div>
             `).join('');
+        }
+
+        function getDisplayFilename(filename) {
+            // Remove UUID prefix and show meaningful name
+            const parts = filename.split('_');
+            if (parts.length > 1) {
+                return parts.slice(1).join('_');
+            }
+            return filename;
+        }
+
+        async function moveMedia(mediaId, direction) {
+            if (!currentSignageId) return;
+
+            try {
+                const formData = new FormData();
+                formData.append('direction', direction);
+
+                const response = await fetch(`/api/signage/${currentSignageId}/media/${mediaId}/move`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    loadMediaList();
+                } else {
+                    const error = await response.json();
+                    console.error('Move failed:', error);
+                }
+            } catch (error) {
+                console.error('Error moving media:', error);
+            }
         }
 
         async function uploadMedia() {
@@ -349,14 +401,29 @@ MICROSOFT_TENANT_ID=common  # or your tenant ID</pre>
 
             const fileInput = document.getElementById('mediaFileInput');
             const duration = document.getElementById('mediaDuration').value || 10;
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadStatus = document.getElementById('uploadStatus');
 
             if (!fileInput.files.length) {
                 alert('Please select a file');
                 return;
             }
 
+            const file = fileInput.files[0];
+            const isPowerPoint = file.name.toLowerCase().endsWith('.ppt') || file.name.toLowerCase().endsWith('.pptx');
+
+            // Show processing status for PowerPoint
+            if (isPowerPoint) {
+                uploadStatus.textContent = 'Converting PowerPoint slides... This may take a moment.';
+                uploadStatus.style.display = 'block';
+                uploadStatus.style.color = '#3b82f6';
+            }
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            formData.append('file', file);
             formData.append('duration', duration);
 
             try {
@@ -366,15 +433,33 @@ MICROSOFT_TENANT_ID=common  # or your tenant ID</pre>
                 });
 
                 if (response.ok) {
+                    const data = await response.json();
                     fileInput.value = '';
+
+                    // Show success message for PowerPoint
+                    if (data.items && data.items.length > 0) {
+                        uploadStatus.textContent = `✓ Added ${data.items.length} slides from PowerPoint`;
+                        uploadStatus.style.color = '#22c55e';
+                        setTimeout(() => { uploadStatus.style.display = 'none'; }, 3000);
+                    } else {
+                        uploadStatus.style.display = 'none';
+                    }
+
                     loadMediaList();
                 } else {
                     const error = await response.json();
-                    alert('Error: ' + (error.detail || 'Failed to upload'));
+                    uploadStatus.textContent = 'Error: ' + (error.detail || 'Failed to upload');
+                    uploadStatus.style.color = '#dc2626';
+                    uploadStatus.style.display = 'block';
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Failed to upload media');
+                uploadStatus.textContent = 'Failed to upload media';
+                uploadStatus.style.color = '#dc2626';
+                uploadStatus.style.display = 'block';
+            } finally {
+                uploadBtn.disabled = false;
+                uploadBtn.textContent = 'Upload';
             }
         }
 

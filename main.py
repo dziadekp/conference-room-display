@@ -5,11 +5,15 @@ A tablet-friendly calendar display for conference room scheduling.
 import os
 import uuid
 import shutil
+import subprocess
+import tempfile
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import List
 
 from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, Form
+from pydantic import BaseModel
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -404,8 +408,74 @@ async def delete_room(room_id: int, db: AsyncSession = Depends(get_db)):
 # =============================================================================
 
 UPLOAD_DIR = Path("static/uploads")
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".mp4", ".webm"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".mp4", ".webm", ".ppt", ".pptx"}
+POWERPOINT_EXTENSIONS = {".ppt", ".pptx"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+
+class MediaOrderItem(BaseModel):
+    """Model for reordering media items."""
+    id: int
+    order: int
+
+
+def convert_ppt_to_images(ppt_path: Path, output_dir: Path) -> List[Path]:
+    """
+    Convert PowerPoint file to images using LibreOffice.
+    Returns list of generated image paths.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # First convert PPT to PDF using LibreOffice
+    try:
+        subprocess.run([
+            "libreoffice", "--headless", "--convert-to", "pdf",
+            "--outdir", str(output_dir),
+            str(ppt_path)
+        ], check=True, capture_output=True, timeout=120)
+    except FileNotFoundError:
+        # Try soffice instead of libreoffice
+        try:
+            subprocess.run([
+                "soffice", "--headless", "--convert-to", "pdf",
+                "--outdir", str(output_dir),
+                str(ppt_path)
+            ], check=True, capture_output=True, timeout=120)
+        except FileNotFoundError:
+            raise RuntimeError("LibreOffice not installed. Install with: sudo apt-get install libreoffice")
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("PowerPoint conversion timed out")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"LibreOffice conversion failed: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+
+    # Find the generated PDF
+    pdf_name = ppt_path.stem + ".pdf"
+    pdf_path = output_dir / pdf_name
+
+    if not pdf_path.exists():
+        raise RuntimeError("PDF conversion failed - no output file generated")
+
+    # Convert PDF to images using pdf2image
+    try:
+        from pdf2image import convert_from_path
+        images = convert_from_path(pdf_path, dpi=150, fmt='png')
+    except Exception as e:
+        pdf_path.unlink(missing_ok=True)
+        raise RuntimeError(f"PDF to image conversion failed: {str(e)}. Install poppler-utils: sudo apt-get install poppler-utils")
+
+    # Save each page as an image
+    image_paths = []
+    base_name = ppt_path.stem
+    for i, image in enumerate(images):
+        image_filename = f"{uuid.uuid4().hex}_{base_name}_slide_{i+1}.png"
+        image_path = UPLOAD_DIR / image_filename
+        image.save(image_path, "PNG")
+        image_paths.append(image_path)
+
+    # Clean up PDF
+    pdf_path.unlink(missing_ok=True)
+
+    return image_paths
 
 
 @app.get("/signage/{display_id}", response_class=HTMLResponse)
@@ -522,7 +592,7 @@ async def upload_signage_media(
     duration: int = Form(10),
     db: AsyncSession = Depends(get_db)
 ):
-    """Upload a media file for a signage display."""
+    """Upload a media file for a signage display. Supports images, videos, and PowerPoint."""
     # Verify display exists
     result = await db.execute(select(SignageDisplay).where(SignageDisplay.id == display_id))
     display = result.scalar_one_or_none()
@@ -537,10 +607,6 @@ async def upload_signage_media(
             detail=f"File type not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    # Generate unique filename
-    unique_filename = f"{uuid.uuid4().hex}_{file.filename}"
-    file_path = UPLOAD_DIR / unique_filename
-
     # Save file
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -548,12 +614,6 @@ async def upload_signage_media(
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 50MB.")
-
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    # Determine media type
-    media_type = "video" if ext in {".mp4", ".webm"} else "image"
 
     # Get next order number
     result = await db.execute(
@@ -563,6 +623,60 @@ async def upload_signage_media(
     )
     last_item = result.scalar()
     next_order = (last_item.order + 1) if last_item else 0
+
+    # Handle PowerPoint files specially - convert to images
+    if ext in POWERPOINT_EXTENSIONS:
+        # Save to temp file for conversion
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_file:
+            tmp_file.write(content)
+            tmp_path = Path(tmp_file.name)
+
+        try:
+            # Convert to images
+            image_paths = convert_ppt_to_images(tmp_path, UPLOAD_DIR)
+
+            # Create a media item for each slide
+            created_items = []
+            for i, image_path in enumerate(image_paths):
+                media_item = MediaItem(
+                    display_id=display_id,
+                    filename=image_path.name,
+                    media_type="image",
+                    duration=duration,
+                    order=next_order + i,
+                )
+                db.add(media_item)
+                await db.flush()
+                await db.refresh(media_item)
+                created_items.append({
+                    "id": media_item.id,
+                    "filename": media_item.filename,
+                    "url": f"/static/uploads/{media_item.filename}",
+                    "media_type": media_item.media_type,
+                    "duration": media_item.duration,
+                    "order": media_item.order,
+                })
+
+            return {
+                "success": True,
+                "message": f"PowerPoint converted to {len(created_items)} slides",
+                "items": created_items,
+            }
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            # Clean up temp file
+            tmp_path.unlink(missing_ok=True)
+
+    # Regular image/video upload
+    unique_filename = f"{uuid.uuid4().hex}_{file.filename}"
+    file_path = UPLOAD_DIR / unique_filename
+
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # Determine media type
+    media_type = "video" if ext in {".mp4", ".webm"} else "image"
 
     # Create media item
     media_item = MediaItem(
@@ -630,6 +744,89 @@ async def update_media_order(
     item.order = order
 
     return {"success": True, "order": order}
+
+
+@app.post("/api/signage/{display_id}/media/{media_id}/move")
+async def move_media_item(
+    display_id: int,
+    media_id: int,
+    direction: str = Form(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Move a media item up or down in the playlist order."""
+    # Get all items for this display ordered by order
+    result = await db.execute(
+        select(MediaItem)
+        .where(MediaItem.display_id == display_id)
+        .order_by(MediaItem.order, MediaItem.id)
+    )
+    items = list(result.scalars().all())
+
+    if not items:
+        raise HTTPException(status_code=404, detail="No media items found")
+
+    # Find the current item and its index
+    current_idx = None
+    for i, item in enumerate(items):
+        if item.id == media_id:
+            current_idx = i
+            break
+
+    if current_idx is None:
+        raise HTTPException(status_code=404, detail="Media item not found")
+
+    # Calculate swap index based on direction
+    if direction == "up" and current_idx > 0:
+        swap_idx = current_idx - 1
+    elif direction == "down" and current_idx < len(items) - 1:
+        swap_idx = current_idx + 1
+    else:
+        # Can't move further in that direction
+        return {"success": True, "message": "Already at boundary"}
+
+    # Swap the order values
+    current_order = items[current_idx].order
+    swap_order = items[swap_idx].order
+
+    # If they have the same order (shouldn't happen but handle it)
+    if current_order == swap_order:
+        if direction == "up":
+            items[current_idx].order = swap_order - 1
+        else:
+            items[current_idx].order = swap_order + 1
+    else:
+        items[current_idx].order = swap_order
+        items[swap_idx].order = current_order
+
+    return {"success": True}
+
+
+@app.put("/api/signage/{display_id}/reorder")
+async def bulk_reorder_media(
+    display_id: int,
+    items: List[MediaOrderItem],
+    db: AsyncSession = Depends(get_db)
+):
+    """Bulk update the order of all media items for a display."""
+    # Verify display exists
+    result = await db.execute(select(SignageDisplay).where(SignageDisplay.id == display_id))
+    display = result.scalar_one_or_none()
+    if not display:
+        raise HTTPException(status_code=404, detail="Display not found")
+
+    # Update each item's order
+    for item_order in items:
+        result = await db.execute(
+            select(MediaItem).where(
+                MediaItem.id == item_order.id,
+                MediaItem.display_id == display_id
+            )
+        )
+        item = result.scalar_one_or_none()
+        if item:
+            item.order = item_order.order
+
+    return {"success": True}
 
 
 if __name__ == "__main__":

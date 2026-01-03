@@ -43,8 +43,10 @@ source venv/bin/activate
   - `/api/signage` - GET: List all displays, POST: Create new display
   - `/api/signage/{display_id}` - DELETE: Remove display
   - `/api/signage/{display_id}/playlist` - GET: Get media items for display
-  - `/api/signage/{display_id}/media` - POST: Upload media file (50MB max)
+  - `/api/signage/{display_id}/media` - POST: Upload media file (images, videos, PowerPoint - 50MB max)
   - `/api/signage/{display_id}/media/{media_id}` - DELETE: Remove media item
+  - `/api/signage/{display_id}/media/{media_id}/move` - POST: Move item up/down in playlist
+  - `/api/signage/{display_id}/reorder` - PUT: Bulk reorder all media items
 
 ### Calendar Provider Pattern
 The `CalendarService` class (`services/calendar.py`) uses a provider abstraction:
@@ -81,12 +83,23 @@ The `CalendarService` class (`services/calendar.py`) uses a provider abstraction
 
 ### Digital Signage
 - **Full-Screen Display**: `/signage/{display_id}` renders full-screen slideshow optimized for TVs
-- **Media Support**: Images (JPG, PNG, GIF) and videos (MP4, WebM), max 50MB per file
+- **Media Support**: Images (JPG, PNG, GIF), videos (MP4, WebM), and PowerPoint (PPT, PPTX), max 50MB per file
+- **PowerPoint Conversion**: PPT/PPTX files are automatically converted to images (one per slide) using LibreOffice
+- **Playlist Ordering**: Up/down controls to reorder media items in the playlist sequence
 - **Auto-Advance**: Images show for configurable duration, videos play to completion
 - **Smooth Transitions**: 1-second fade transitions between media items
 - **Audio Handling**: Videos muted by default (browser autoplay policy), click "Unmute" button to enable sound
 - **Auto-Refresh Playlist**: Player checks for new content every 60 seconds
 - **File Storage**: Uploaded media stored in `static/uploads/` with UUID-prefixed filenames
+
+### PowerPoint Requirements (Server)
+For PowerPoint conversion, the server needs:
+```bash
+# Ubuntu/Debian
+sudo apt-get install libreoffice poppler-utils
+
+# The app uses LibreOffice headless mode to convert PPT → PDF → Images
+```
 
 ## Environment Variables
 
