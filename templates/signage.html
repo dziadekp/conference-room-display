@@ -77,9 +77,47 @@
         .hide-cursor {
             cursor: none;
         }
+
+        /* Unmute button */
+        .unmute-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 50px;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+        }
+
+        .unmute-btn:hover {
+            background: #fff;
+            transform: scale(1.05);
+        }
+
+        .unmute-btn.hidden {
+            display: none;
+        }
+
+        .unmute-btn .icon {
+            font-size: 1.5rem;
+        }
     </style>
 </head>
 <body>
+    <button class="unmute-btn" id="unmuteBtn" onclick="enableAudio()">
+        <span class="icon">🔇</span>
+        <span>Click for Sound</span>
+    </button>
+
     <div class="signage-container" id="signageContainer">
         <div class="slide active no-content" id="loadingSlide">
             <div>
@@ -92,6 +130,19 @@
     <script>
         const DISPLAY_ID = {{ display.id }};
         const PLAYLIST_REFRESH_INTERVAL = 60000; // Check for updates every 60 seconds
+        let audioEnabled = false;
+        let playerInstance = null;
+
+        function enableAudio() {
+            audioEnabled = true;
+            document.getElementById('unmuteBtn').classList.add('hidden');
+
+            // Unmute current video if playing
+            const currentVideo = document.querySelector('.slide.active video');
+            if (currentVideo) {
+                currentVideo.muted = false;
+            }
+        }
 
         class SignagePlayer {
             constructor(containerId, displayId) {
@@ -178,7 +229,7 @@
                     const video = document.createElement('video');
                     video.src = item.url;
                     video.autoplay = true;
-                    video.muted = true; // Muted for autoplay policy
+                    video.muted = !audioEnabled; // Muted unless user clicked unmute
                     video.playsInline = true;
                     video.onended = () => this.showNextSlide();
                     video.onerror = () => {
