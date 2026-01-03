@@ -286,9 +286,33 @@ class ConferenceRoomDisplay {
                 hour12: true
             });
 
+            // Calculate duration
+            const durationMs = end - start;
+            const durationHours = Math.floor(durationMs / 3600000);
+            const durationMins = Math.floor((durationMs % 3600000) / 60000);
+            let durationStr = '';
+            if (durationHours > 0) {
+                durationStr = `${durationHours}h`;
+                if (durationMins > 0) durationStr += ` ${durationMins}m`;
+            } else {
+                durationStr = `${durationMins}m`;
+            }
+
             let statusClass = '';
             if (isCurrent) statusClass = 'current';
             else if (isUpcoming) statusClass = 'upcoming';
+
+            // Build organizer/booker info
+            let bookerInfo = '';
+            if (event.organizer) {
+                bookerInfo = `<div class="event-organizer">👤 ${this.escapeHtml(event.organizer)}</div>`;
+            }
+
+            // Build description if available
+            let descriptionHtml = '';
+            if (event.description && event.description.trim()) {
+                descriptionHtml = `<div class="event-description">${this.escapeHtml(event.description)}</div>`;
+            }
 
             html += `
                 <div class="event-card ${statusClass}">
@@ -296,13 +320,20 @@ class ConferenceRoomDisplay {
                     <div class="event-content">
                         <div class="event-info">
                             <div class="event-title">${this.escapeHtml(event.title)}</div>
-                            ${event.organizer ? `<div class="event-organizer">${this.escapeHtml(event.organizer)}</div>` : ''}
+                            ${bookerInfo}
+                            ${descriptionHtml}
                         </div>
                         <div class="event-actions">
                             <div class="event-time">
-                                ${startStr}<br>
-                                <span style="opacity: 0.6">to</span><br>
-                                ${endStr}
+                                <div class="time-range">
+                                    <span class="time-label">Start</span>
+                                    <span class="time-start">${startStr}</span>
+                                </div>
+                                <div class="time-range" style="margin-top: 8px;">
+                                    <span class="time-label">End</span>
+                                    <span class="time-end">${endStr}</span>
+                                </div>
+                                <div style="margin-top: 8px; font-size: 0.8rem; opacity: 0.7;">${durationStr}</div>
                             </div>
                             <button class="cancel-btn" onclick="event.stopPropagation(); display.cancelBooking('${event.id}', '${this.escapeHtml(event.title).replace(/'/g, "\\'")}');" title="Cancel booking">
                                 &times;
