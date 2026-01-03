@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <title>{{ display.name }} - Digital Signage</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .signage-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        .slide {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 1s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .slide.active {
+            opacity: 1;
+            z-index: 1;
+        }
+
+        .slide img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .slide video {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* Loading/empty state */
+        .no-content {
+            color: #666;
+            text-align: center;
+            font-size: 2rem;
+        }
+
+        .no-content h2 {
+            margin-bottom: 1rem;
+            color: #888;
+        }
+
+        .no-content p {
+            font-size: 1.2rem;
+        }
+
+        /* Hide cursor after inactivity */
+        .hide-cursor {
+            cursor: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="signage-container" id="signageContainer">
+        <div class="slide active no-content" id="loadingSlide">
+            <div>
+                <h2>{{ display.name }}</h2>
+                <p>Loading content...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DISPLAY_ID = {{ display.id }};
+        const PLAYLIST_REFRESH_INTERVAL = 60000; // Check for updates every 60 seconds
+
+        class SignagePlayer {
+            constructor(containerId, displayId) {
+                this.container = document.getElementById(containerId);
+                this.displayId = displayId;
+                this.playlist = [];
+                this.currentIndex = -1;
+                this.currentSlide = null;
+                this.nextSlide = null;
+                this.isTransitioning = false;
+                this.cursorTimeout = null;
+
+                this.init();
+            }
+
+            async init() {
+                await this.loadPlaylist();
+                this.startSlideshow();
+                this.setupCursorHide();
+
+                // Periodically refresh playlist
+                setInterval(() => this.refreshPlaylist(), PLAYLIST_REFRESH_INTERVAL);
+            }
+
+            async loadPlaylist() {
+                try {
+                    const response = await fetch(`/api/signage/${this.displayId}/playlist`);
+                    const data = await response.json();
+                    this.playlist = data.items || [];
+
+                    if (this.playlist.length === 0) {
+                        this.showNoContent();
+                    }
+                } catch (error) {
+                    console.error('Error loading playlist:', error);
+                    this.showNoContent();
+                }
+            }
+
+            async refreshPlaylist() {
+                const oldLength = this.playlist.length;
+                await this.loadPlaylist();
+
+                // If we went from empty to having content, start slideshow
+                if (oldLength === 0 && this.playlist.length > 0) {
+                    this.startSlideshow();
+                }
+            }
+
+            showNoContent() {
+                this.container.innerHTML = `
+                    <div class="slide active no-content">
+                        <div>
+                            <h2>{{ display.name }}</h2>
+                            <p>No content available</p>
+                        </div>
+                    </div>
+                `;
+            }
+
+            startSlideshow() {
+                if (this.playlist.length === 0) return;
+
+                // Clear container
+                this.container.innerHTML = '';
+
+                // Start with first item
+                this.currentIndex = -1;
+                this.showNextSlide();
+            }
+
+            showNextSlide() {
+                if (this.playlist.length === 0 || this.isTransitioning) return;
+
+                this.isTransitioning = true;
+                this.currentIndex = (this.currentIndex + 1) % this.playlist.length;
+                const item = this.playlist[this.currentIndex];
+
+                // Create new slide
+                const newSlide = document.createElement('div');
+                newSlide.className = 'slide';
+
+                if (item.media_type === 'video') {
+                    const video = document.createElement('video');
+                    video.src = item.url;
+                    video.autoplay = true;
+                    video.muted = true; // Muted for autoplay policy
+                    video.playsInline = true;
+                    video.onended = () => this.showNextSlide();
+                    video.onerror = () => {
+                        console.error('Video error:', item.url);
+                        this.showNextSlide();
+                    };
+                    newSlide.appendChild(video);
+                } else {
+                    const img = document.createElement('img');
+                    img.src = item.url;
+                    img.alt = '';
+                    img.onload = () => {
+                        // Image loaded, schedule next slide
+                        setTimeout(() => this.showNextSlide(), (item.duration || 10) * 1000);
+                    };
+                    img.onerror = () => {
+                        console.error('Image error:', item.url);
+                        this.showNextSlide();
+                    };
+                    newSlide.appendChild(img);
+                }
+
+                // Add to container
+                this.container.appendChild(newSlide);
+
+                // Trigger reflow for transition
+                newSlide.offsetHeight;
+
+                // Activate new slide
+                newSlide.classList.add('active');
+
+                // Remove old slide after transition
+                if (this.currentSlide) {
+                    const oldSlide = this.currentSlide;
+                    oldSlide.classList.remove('active');
+                    setTimeout(() => {
+                        if (oldSlide.parentNode) {
+                            oldSlide.parentNode.removeChild(oldSlide);
+                        }
+                    }, 1000);
+                }
+
+                this.currentSlide = newSlide;
+                this.isTransitioning = false;
+            }
+
+            setupCursorHide() {
+                const hideCursor = () => {
+                    document.body.classList.add('hide-cursor');
+                };
+
+                const showCursor = () => {
+                    document.body.classList.remove('hide-cursor');
+                    clearTimeout(this.cursorTimeout);
+                    this.cursorTimeout = setTimeout(hideCursor, 3000);
+                };
+
+                document.addEventListener('mousemove', showCursor);
+                this.cursorTimeout = setTimeout(hideCursor, 3000);
+            }
+        }
+
+        // Start player when DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            new SignagePlayer('signageContainer', DISPLAY_ID);
+        });
+    </script>
+</body>
+</html>

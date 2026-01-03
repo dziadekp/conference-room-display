@@ -9,8 +9,11 @@ class ConferenceRoomDisplay {
         this.timeUpdateInterval = 1000; // 1 second
         this.data = null;
         this.weekData = null;
+        this.monthData = null;
         this.currentView = 'today';
         this.selectedDate = new Date();
+        this.selectedYear = this.selectedDate.getFullYear();
+        this.selectedMonth = this.selectedDate.getMonth() + 1; // 1-based
         this.bookerName = localStorage.getItem('bookerName') || '';
 
         this.init();
@@ -73,11 +76,16 @@ class ConferenceRoomDisplay {
                 if (!response.ok) throw new Error('Failed to fetch data');
                 this.data = await response.json();
                 this.render();
-            } else {
+            } else if (this.currentView === 'week') {
                 const response = await fetch(`/api/rooms/${this.roomId}/week?start_date=${dateStr}`);
                 if (!response.ok) throw new Error('Failed to fetch week data');
                 this.weekData = await response.json();
                 this.renderWeekView();
+            } else if (this.currentView === 'month') {
+                const response = await fetch(`/api/rooms/${this.roomId}/month?year=${this.selectedYear}&month=${this.selectedMonth}`);
+                if (!response.ok) throw new Error('Failed to fetch month data');
+                this.monthData = await response.json();
+                this.renderMonthView();
             }
         } catch (error) {
             console.error('Error fetching room data:', error);
@@ -91,16 +99,36 @@ class ConferenceRoomDisplay {
         // Update buttons
         document.getElementById('todayViewBtn').classList.toggle('active', view === 'today');
         document.getElementById('weekViewBtn').classList.toggle('active', view === 'week');
+        document.getElementById('monthViewBtn').classList.toggle('active', view === 'month');
 
         // Show/hide views
-        document.getElementById('todayView').style.display = view === 'today' ? 'block' : 'none';
-        document.getElementById('weekView').style.display = view === 'week' ? 'block' : 'none';
+        document.getElementById('todayView').style.display = view === 'today' ? 'flex' : 'none';
+        document.getElementById('weekView').style.display = view === 'week' ? 'flex' : 'none';
+        document.getElementById('monthView').style.display = view === 'month' ? 'flex' : 'none';
+
+        // Sync month/year from selected date when switching to month view
+        if (view === 'month') {
+            this.selectedYear = this.selectedDate.getFullYear();
+            this.selectedMonth = this.selectedDate.getMonth() + 1;
+        }
 
         this.fetchData();
     }
 
     navigateDate(delta) {
-        if (this.currentView === 'week') {
+        if (this.currentView === 'month') {
+            // Navigate by months
+            this.selectedMonth += delta;
+            if (this.selectedMonth > 12) {
+                this.selectedMonth = 1;
+                this.selectedYear++;
+            } else if (this.selectedMonth < 1) {
+                this.selectedMonth = 12;
+                this.selectedYear--;
+            }
+            // Update selectedDate to match
+            this.selectedDate = new Date(this.selectedYear, this.selectedMonth - 1, 1);
+        } else if (this.currentView === 'week') {
             this.selectedDate.setDate(this.selectedDate.getDate() + (delta * 7));
         } else {
             this.selectedDate.setDate(this.selectedDate.getDate() + delta);
@@ -117,6 +145,8 @@ class ConferenceRoomDisplay {
 
     goToToday() {
         this.selectedDate = new Date();
+        this.selectedYear = this.selectedDate.getFullYear();
+        this.selectedMonth = this.selectedDate.getMonth() + 1;
         this.updateDatePicker();
         this.fetchData();
     }
@@ -185,51 +215,14 @@ class ConferenceRoomDisplay {
     renderQuickBook() {
         const section = document.getElementById('quickBookSection');
         const isToday = this.formatDateForInput(this.selectedDate) === this.formatDateForInput(new Date());
+        const hasActiveMeeting = isToday && !this.data.is_available;
 
-        if (!isToday) {
-            // Show schedule booking button for other dates
-            section.innerHTML = `
-                <div class="section-title">Schedule a Meeting</div>
-                <div class="quick-book-buttons">
-                    <button class="book-btn primary" onclick="display.openBookingModal()">
-                        Schedule Meeting
-                        <span class="duration">for ${this.selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
-                    </button>
-                </div>
-            `;
-            return;
-        }
+        let html = '';
 
-        if (this.data.is_available) {
-            section.innerHTML = `
-                <div class="section-title">Quick Book</div>
-                <div class="quick-book-buttons">
-                    <button class="book-btn primary" onclick="display.quickBook(15)">
-                        15 min
-                        <span class="duration">Quick</span>
-                    </button>
-                    <button class="book-btn primary" onclick="display.quickBook(30)">
-                        30 min
-                        <span class="duration">Standard</span>
-                    </button>
-                    <button class="book-btn secondary" onclick="display.quickBook(60)">
-                        1 hour
-                        <span class="duration">Extended</span>
-                    </button>
-                    <button class="book-btn fullday" onclick="display.bookFullDay()">
-                        Full Day
-                        <span class="duration">Until 6 PM</span>
-                    </button>
-                </div>
-                <div class="schedule-later">
-                    <button class="book-btn outline" onclick="display.openBookingModal()">
-                        Schedule for Later
-                    </button>
-                </div>
-            `;
-        } else {
-            section.innerHTML = `
-                <div class="section-title">Meeting Actions</div>
+        // Always show meeting actions if there's an active meeting right now
+        if (hasActiveMeeting) {
+            html += `
+                <div class="section-title">Current Meeting Actions</div>
                 <div class="meeting-actions">
                     <button class="action-btn" onclick="display.extendMeeting(15)">
                         +15 min
@@ -243,6 +236,19 @@ class ConferenceRoomDisplay {
                 </div>
             `;
         }
+
+        // Always show quick book options - all buttons in one compact row
+        html += `
+            <div class="quick-book-buttons">
+                <button class="book-btn primary" onclick="display.quickBook(15)">15m</button>
+                <button class="book-btn primary" onclick="display.quickBook(30)">30m</button>
+                <button class="book-btn secondary" onclick="display.quickBook(60)">1hr</button>
+                <button class="book-btn fullday" onclick="display.bookFullDay()">All Day</button>
+                <button class="book-btn outline" onclick="display.openBookingModal()">Custom</button>
+            </div>
+        `;
+
+        section.innerHTML = html;
     }
 
     renderSchedule() {
@@ -316,15 +322,17 @@ class ConferenceRoomDisplay {
         const grid = document.getElementById('weekGrid');
         const weekEvents = this.weekData.week_events || {};
 
-        let html = '<div class="week-days">';
-
-        // Create a sorted array of dates
+        // Create a sorted array of dates - ensure we have 7 days
         const dates = Object.keys(weekEvents).sort();
+
+        // Build HTML directly into the grid (no wrapper div needed - #weekGrid already has .week-grid class)
+        let html = '';
 
         dates.forEach(dateStr => {
             const date = new Date(dateStr + 'T00:00:00');
             const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
             const dayNum = date.getDate();
+            const monthName = date.toLocaleDateString('en-US', { month: 'short' });
             const isToday = this.formatDateForInput(date) === this.formatDateForInput(new Date());
             const events = weekEvents[dateStr] || [];
 
@@ -333,6 +341,7 @@ class ConferenceRoomDisplay {
                     <div class="day-header">
                         <span class="day-name">${dayName}</span>
                         <span class="day-num">${dayNum}</span>
+                        <span class="day-month">${monthName}</span>
                     </div>
                     <div class="day-events">
             `;
@@ -340,7 +349,7 @@ class ConferenceRoomDisplay {
             if (events.length === 0) {
                 html += `<div class="no-day-events">No meetings</div>`;
             } else {
-                events.slice(0, 4).forEach(event => {
+                events.slice(0, 5).forEach(event => {
                     const start = new Date(event.start);
                     const timeStr = start.toLocaleTimeString('en-US', {
                         hour: 'numeric',
@@ -354,8 +363,8 @@ class ConferenceRoomDisplay {
                         </div>
                     `;
                 });
-                if (events.length > 4) {
-                    html += `<div class="more-events">+${events.length - 4} more</div>`;
+                if (events.length > 5) {
+                    html += `<div class="more-events">+${events.length - 5} more</div>`;
                 }
             }
 
@@ -365,7 +374,101 @@ class ConferenceRoomDisplay {
             `;
         });
 
+        grid.innerHTML = html;
+    }
+
+    renderMonthView() {
+        if (!this.monthData) return;
+
+        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        // Update month header
+        const monthHeader = document.getElementById('monthHeader');
+        monthHeader.textContent = `${monthNames[this.selectedMonth - 1]} ${this.selectedYear}`;
+
+        const grid = document.getElementById('monthGrid');
+        const monthEvents = this.monthData.month_events || {};
+
+        // Get sorted dates
+        const dates = Object.keys(monthEvents).sort();
+        if (dates.length === 0) {
+            grid.innerHTML = '<div class="no-events">No data available</div>';
+            return;
+        }
+
+        // Build calendar grid
+        let html = '';
+
+        // Add day name headers
+        html += '<div class="month-day-headers">';
+        dayNames.forEach(day => {
+            html += `<div class="month-day-header">${day}</div>`;
+        });
         html += '</div>';
+
+        // Add calendar days
+        html += '<div class="month-days">';
+
+        const today = this.formatDateForInput(new Date());
+
+        dates.forEach(dateStr => {
+            const date = new Date(dateStr + 'T00:00:00');
+            const dayNum = date.getDate();
+            const isToday = dateStr === today;
+            const isCurrentMonth = (date.getMonth() + 1) === this.selectedMonth;
+            const events = monthEvents[dateStr] || [];
+
+            let dayClass = 'month-day';
+            if (isToday) dayClass += ' today';
+            if (!isCurrentMonth) dayClass += ' other-month';
+            if (events.length > 0) dayClass += ' has-events';
+
+            html += `
+                <div class="${dayClass}" onclick="display.setDate('${dateStr}'); display.switchView('today');">
+                    <div class="month-day-num">${dayNum}</div>
+                    <div class="month-day-events">
+            `;
+
+            // Show up to 3 events
+            events.slice(0, 3).forEach(event => {
+                const start = new Date(event.start);
+                const end = new Date(event.end);
+
+                // Calculate duration in hours
+                const durationHours = (end - start) / (1000 * 60 * 60);
+                const isFullDay = durationHours >= 8; // 8+ hours = full day
+
+                const startStr = start.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                });
+                const endStr = end.toLocaleTimeString('en-US', {
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                });
+
+                const eventClass = isFullDay ? 'month-event fullday' : 'month-event';
+                const timeDisplay = isFullDay ? 'Full Day' : `${startStr} - ${endStr}`;
+
+                html += `<div class="${eventClass}" title="${this.escapeHtml(event.title)} (${startStr} - ${endStr})">${timeDisplay}</div>`;
+            });
+
+            if (events.length > 3) {
+                html += `<div class="month-more">+${events.length - 3} more</div>`;
+            }
+
+            html += `
+                    </div>
+                </div>
+            `;
+        });
+
+        html += '</div>';
+
         grid.innerHTML = html;
     }
 
@@ -539,17 +642,29 @@ class ConferenceRoomDisplay {
     }
 
     async quickBook(duration) {
-        // Open modal for name input if no saved name
-        if (!this.bookerName) {
+        const isToday = this.formatDateForInput(this.selectedDate) === this.formatDateForInput(new Date());
+
+        // Open modal for name input if no saved name, or if booking for a future date
+        if (!this.bookerName || !isToday) {
             this.openBookingModal();
             document.getElementById('bookingDuration').value = duration;
-            // Set time to now
-            const now = new Date();
-            document.getElementById('bookingTime').value = now.toTimeString().slice(0, 5);
-            document.getElementById('bookingDate').value = this.formatDateForInput(new Date());
+            document.getElementById('bookingDate').value = this.formatDateForInput(this.selectedDate);
+
+            if (isToday) {
+                // Set time to next 30-minute interval for today
+                const now = new Date();
+                const minutes = now.getMinutes();
+                const nextSlot = Math.ceil(minutes / 30) * 30;
+                now.setMinutes(nextSlot, 0, 0);
+                document.getElementById('bookingTime').value = now.toTimeString().slice(0, 5);
+            } else {
+                // Set time to 9 AM for future dates
+                document.getElementById('bookingTime').value = '09:00';
+            }
             return;
         }
 
+        // Quick book for today with saved name
         await this.bookRoom(duration, 'Quick Booking', this.bookerName);
     }
 
@@ -583,24 +698,18 @@ class ConferenceRoomDisplay {
     }
 
     async bookFullDay() {
-        // Open modal for name input if no saved name
-        if (!this.bookerName) {
+        const isToday = this.formatDateForInput(this.selectedDate) === this.formatDateForInput(new Date());
+
+        // Open modal for name input if no saved name, or if booking for a future date
+        if (!this.bookerName || !isToday) {
             this.openBookingModal();
-            // Calculate duration until 6 PM
-            const now = new Date();
-            const endOfDay = new Date(now);
-            endOfDay.setHours(18, 0, 0, 0);
-            if (now >= endOfDay) {
-                endOfDay.setHours(23, 59, 0, 0);
-            }
-            const durationMinutes = Math.round((endOfDay - now) / 60000);
-            document.getElementById('bookingDuration').value = durationMinutes > 180 ? 240 : 180;
-            document.getElementById('bookingTime').value = now.toTimeString().slice(0, 5);
-            document.getElementById('bookingDate').value = this.formatDateForInput(new Date());
+            document.getElementById('bookingDuration').value = 'fullday';
+            document.getElementById('bookingDate').value = this.formatDateForInput(this.selectedDate);
+            document.getElementById('bookingTime').value = '09:00';
             return;
         }
 
-        // Calculate minutes until 6 PM (18:00)
+        // Quick book full day for today with saved name
         const now = new Date();
         const endOfDay = new Date(now);
         endOfDay.setHours(18, 0, 0, 0);

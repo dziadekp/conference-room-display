@@ -3,17 +3,21 @@ Conference Room Calendar Display
 A tablet-friendly calendar display for conference room scheduling.
 """
 import os
+import uuid
+import shutil
 from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, Request, HTTPException, Depends
+from fastapi import FastAPI, Request, HTTPException, Depends, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
 from dotenv import load_dotenv
 
-from database import get_db, init_db
+from database import get_db, init_db, SignageDisplay, MediaItem
 from auth.google import router as google_router
 from auth.microsoft import router as microsoft_router
 from services.calendar import CalendarService
@@ -143,6 +147,43 @@ async def get_room_week_events(
         "room": room,
         "week_events": week_events,
         "start_date": start.isoformat(),
+        "server_time": datetime.now().isoformat(),
+    }
+
+
+@app.get("/api/rooms/{room_id}/month")
+async def get_room_month_events(
+    room_id: int,
+    year: int = None,
+    month: int = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Get events for a room for the entire month."""
+    calendar_service = CalendarService(db)
+
+    room = await calendar_service.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    # Use current year/month if not specified
+    now = datetime.now()
+    if year is None:
+        year = now.year
+    if month is None:
+        month = now.month
+
+    # Validate month
+    if month < 1 or month > 12:
+        raise HTTPException(status_code=400, detail="Invalid month. Must be 1-12")
+
+    # Get events for the month
+    month_events = await calendar_service.get_events_for_month(room_id, year, month)
+
+    return {
+        "room": room,
+        "month_events": month_events,
+        "year": year,
+        "month": month,
         "server_time": datetime.now().isoformat(),
     }
 
@@ -356,6 +397,239 @@ async def delete_room(room_id: int, db: AsyncSession = Depends(get_db)):
     calendar_service = CalendarService(db)
     await calendar_service.delete_room(room_id)
     return {"success": True}
+
+
+# =============================================================================
+# DIGITAL SIGNAGE ENDPOINTS
+# =============================================================================
+
+UPLOAD_DIR = Path("static/uploads")
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".mp4", ".webm"}
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+
+
+@app.get("/signage/{display_id}", response_class=HTMLResponse)
+async def signage_display(request: Request, display_id: int, db: AsyncSession = Depends(get_db)):
+    """Full-screen signage display page."""
+    result = await db.execute(select(SignageDisplay).where(SignageDisplay.id == display_id))
+    display = result.scalar_one_or_none()
+
+    if not display:
+        raise HTTPException(status_code=404, detail="Display not found")
+
+    return templates.TemplateResponse("signage.html", {
+        "request": request,
+        "display": {"id": display.id, "name": display.name},
+    })
+
+
+@app.get("/api/signage")
+async def list_signage_displays(db: AsyncSession = Depends(get_db)):
+    """List all signage displays."""
+    result = await db.execute(select(SignageDisplay).order_by(SignageDisplay.id))
+    displays = result.scalars().all()
+
+    return {
+        "displays": [
+            {
+                "id": d.id,
+                "name": d.name,
+                "is_active": d.is_active,
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in displays
+        ]
+    }
+
+
+@app.post("/api/signage")
+async def create_signage_display(name: str = Form(...), db: AsyncSession = Depends(get_db)):
+    """Create a new signage display."""
+    display = SignageDisplay(name=name)
+    db.add(display)
+    await db.flush()
+    await db.refresh(display)
+
+    return {
+        "success": True,
+        "display": {
+            "id": display.id,
+            "name": display.name,
+            "is_active": display.is_active,
+        }
+    }
+
+
+@app.delete("/api/signage/{display_id}")
+async def delete_signage_display(display_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a signage display and all its media."""
+    # Get all media items to delete files
+    result = await db.execute(select(MediaItem).where(MediaItem.display_id == display_id))
+    media_items = result.scalars().all()
+
+    # Delete media files
+    for item in media_items:
+        file_path = UPLOAD_DIR / item.filename
+        if file_path.exists():
+            file_path.unlink()
+
+    # Delete media items from database
+    await db.execute(delete(MediaItem).where(MediaItem.display_id == display_id))
+
+    # Delete the display
+    await db.execute(delete(SignageDisplay).where(SignageDisplay.id == display_id))
+
+    return {"success": True}
+
+
+@app.get("/api/signage/{display_id}/playlist")
+async def get_signage_playlist(display_id: int, db: AsyncSession = Depends(get_db)):
+    """Get media playlist for a signage display."""
+    # Verify display exists
+    result = await db.execute(select(SignageDisplay).where(SignageDisplay.id == display_id))
+    display = result.scalar_one_or_none()
+    if not display:
+        raise HTTPException(status_code=404, detail="Display not found")
+
+    # Get media items ordered by order field
+    result = await db.execute(
+        select(MediaItem)
+        .where(MediaItem.display_id == display_id)
+        .order_by(MediaItem.order, MediaItem.id)
+    )
+    items = result.scalars().all()
+
+    return {
+        "display": {"id": display.id, "name": display.name},
+        "items": [
+            {
+                "id": item.id,
+                "filename": item.filename,
+                "url": f"/static/uploads/{item.filename}",
+                "media_type": item.media_type,
+                "duration": item.duration,
+                "order": item.order,
+            }
+            for item in items
+        ]
+    }
+
+
+@app.post("/api/signage/{display_id}/media")
+async def upload_signage_media(
+    display_id: int,
+    file: UploadFile = File(...),
+    duration: int = Form(10),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload a media file for a signage display."""
+    # Verify display exists
+    result = await db.execute(select(SignageDisplay).where(SignageDisplay.id == display_id))
+    display = result.scalar_one_or_none()
+    if not display:
+        raise HTTPException(status_code=404, detail="Display not found")
+
+    # Validate file extension
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type not allowed. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # Generate unique filename
+    unique_filename = f"{uuid.uuid4().hex}_{file.filename}"
+    file_path = UPLOAD_DIR / unique_filename
+
+    # Save file
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Read file in chunks to check size
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 50MB.")
+
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # Determine media type
+    media_type = "video" if ext in {".mp4", ".webm"} else "image"
+
+    # Get next order number
+    result = await db.execute(
+        select(MediaItem)
+        .where(MediaItem.display_id == display_id)
+        .order_by(MediaItem.order.desc())
+    )
+    last_item = result.scalar()
+    next_order = (last_item.order + 1) if last_item else 0
+
+    # Create media item
+    media_item = MediaItem(
+        display_id=display_id,
+        filename=unique_filename,
+        media_type=media_type,
+        duration=duration if media_type == "image" else 0,  # Videos use their own duration
+        order=next_order,
+    )
+    db.add(media_item)
+    await db.flush()
+    await db.refresh(media_item)
+
+    return {
+        "success": True,
+        "item": {
+            "id": media_item.id,
+            "filename": media_item.filename,
+            "url": f"/static/uploads/{media_item.filename}",
+            "media_type": media_item.media_type,
+            "duration": media_item.duration,
+            "order": media_item.order,
+        }
+    }
+
+
+@app.delete("/api/signage/{display_id}/media/{media_id}")
+async def delete_signage_media(display_id: int, media_id: int, db: AsyncSession = Depends(get_db)):
+    """Delete a media item from a signage display."""
+    result = await db.execute(
+        select(MediaItem).where(MediaItem.id == media_id, MediaItem.display_id == display_id)
+    )
+    item = result.scalar_one_or_none()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Media item not found")
+
+    # Delete file
+    file_path = UPLOAD_DIR / item.filename
+    if file_path.exists():
+        file_path.unlink()
+
+    # Delete from database
+    await db.execute(delete(MediaItem).where(MediaItem.id == media_id))
+
+    return {"success": True}
+
+
+@app.put("/api/signage/{display_id}/media/{media_id}/order")
+async def update_media_order(
+    display_id: int,
+    media_id: int,
+    order: int = Form(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Update the order of a media item."""
+    result = await db.execute(
+        select(MediaItem).where(MediaItem.id == media_id, MediaItem.display_id == display_id)
+    )
+    item = result.scalar_one_or_none()
+
+    if not item:
+        raise HTTPException(status_code=404, detail="Media item not found")
+
+    item.order = order
+
+    return {"success": True, "order": order}
 
 
 if __name__ == "__main__":

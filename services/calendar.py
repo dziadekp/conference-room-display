@@ -157,6 +157,48 @@ class CalendarService:
 
         return week_events
 
+    async def get_events_for_month(self, room_id: int, year: int, month: int) -> Dict[str, List[Dict[str, Any]]]:
+        """Get events for an entire calendar month.
+
+        Returns a dictionary with date strings as keys and lists of events as values.
+        Includes days from previous/next months to fill the calendar grid.
+        """
+        import calendar
+
+        # Get the first day of the month and how many days it has
+        first_day = datetime(year, month, 1).date()
+        _, days_in_month = calendar.monthrange(year, month)
+        last_day = datetime(year, month, days_in_month).date()
+
+        # Find the start of the calendar grid (might be previous month)
+        # Calendar starts on Sunday (weekday 6 in Python)
+        start_weekday = first_day.weekday()  # Monday=0, Sunday=6
+        # Convert to Sunday=0 format and calculate days to go back
+        days_to_start = (start_weekday + 1) % 7  # Days since Sunday
+        grid_start = first_day - timedelta(days=days_to_start)
+
+        # Find the end of the calendar grid (might be next month)
+        end_weekday = last_day.weekday()
+        days_to_end = (5 - end_weekday) % 7  # Days until Saturday
+        if days_to_end == 0 and end_weekday != 5:  # If not already Saturday
+            days_to_end = 6 - (end_weekday + 1) % 7
+        grid_end = last_day + timedelta(days=days_to_end)
+
+        # Ensure we have at least 5 weeks (35 days) for consistent display
+        total_days = (grid_end - grid_start).days + 1
+        if total_days < 35:
+            grid_end = grid_start + timedelta(days=34)
+
+        # Get events for each day in the grid
+        month_events = {}
+        current_date = grid_start
+        while current_date <= grid_end:
+            date_str = current_date.isoformat()
+            month_events[date_str] = await self.get_events_for_date(room_id, current_date)
+            current_date += timedelta(days=1)
+
+        return month_events
+
     async def check_conflicts(self, room_id: int, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
         """Check if a time range conflicts with existing events."""
         target_date = start_time.date()

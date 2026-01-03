@@ -65,6 +65,29 @@ class LocalEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class SignageDisplay(Base):
+    """Digital signage display configuration."""
+    __tablename__ = "signage_displays"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Boolean, default=True)
+
+
+class MediaItem(Base):
+    """Media items for signage displays."""
+    __tablename__ = "media_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    display_id = Column(Integer, nullable=False, index=True)
+    filename = Column(String(255), nullable=False)
+    media_type = Column(String(50), nullable=False)  # 'image' or 'video'
+    duration = Column(Integer, default=10)  # seconds to show (for images)
+    order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 async def init_db():
     """Create database tables."""
     async with engine.begin() as conn:

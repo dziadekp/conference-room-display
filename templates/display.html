@@ -47,8 +47,9 @@
         <div class="schedule-section">
             <div class="schedule-header">
                 <div class="view-toggle">
-                    <button id="todayViewBtn" class="view-btn active" onclick="display.switchView('today')">Today</button>
+                    <button id="todayViewBtn" class="view-btn active" onclick="display.switchView('today')">Day</button>
                     <button id="weekViewBtn" class="view-btn" onclick="display.switchView('week')">Week</button>
+                    <button id="monthViewBtn" class="view-btn" onclick="display.switchView('month')">Month</button>
                 </div>
                 <div class="date-nav">
                     <button class="nav-btn" onclick="display.navigateDate(-1)">&lt;</button>
@@ -71,6 +72,16 @@
             <!-- Week View -->
             <div id="weekView" class="view-container" style="display: none;">
                 <div id="weekGrid" class="week-grid">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Month View -->
+            <div id="monthView" class="view-container" style="display: none;">
+                <div class="month-header" id="monthHeader"></div>
+                <div id="monthGrid" class="month-grid">
                     <div class="loading">
                         <div class="spinner"></div>
                     </div>
