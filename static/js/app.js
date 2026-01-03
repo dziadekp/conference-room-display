@@ -382,15 +382,39 @@ class ConferenceRoomDisplay {
             } else {
                 events.slice(0, 5).forEach(event => {
                     const start = new Date(event.start);
-                    const timeStr = start.toLocaleTimeString('en-US', {
+                    const end = new Date(event.end);
+                    const startStr = start.toLocaleTimeString('en-US', {
                         hour: 'numeric',
                         minute: '2-digit',
                         hour12: true
                     });
+                    const endStr = end.toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                    });
+
+                    // Build organizer info
+                    let organizerHtml = '';
+                    if (event.organizer) {
+                        organizerHtml = `<div class="week-event-organizer">👤 ${this.escapeHtml(event.organizer)}</div>`;
+                    }
+
+                    // Build description if available
+                    let descHtml = '';
+                    if (event.description && event.description.trim()) {
+                        const shortDesc = event.description.length > 50
+                            ? event.description.substring(0, 50) + '...'
+                            : event.description;
+                        descHtml = `<div class="week-event-desc">${this.escapeHtml(shortDesc)}</div>`;
+                    }
+
                     html += `
                         <div class="week-event">
-                            <span class="week-event-time">${timeStr}</span>
-                            <span class="week-event-title">${this.escapeHtml(event.title)}</span>
+                            <div class="week-event-title">${this.escapeHtml(event.title)}</div>
+                            ${organizerHtml}
+                            <div class="week-event-time">${startStr} - ${endStr}</div>
+                            ${descHtml}
                         </div>
                     `;
                 });
@@ -485,7 +509,24 @@ class ConferenceRoomDisplay {
                 const eventClass = isFullDay ? 'month-event fullday' : 'month-event';
                 const timeDisplay = isFullDay ? 'Full Day' : `${startStr} - ${endStr}`;
 
-                html += `<div class="${eventClass}" title="${this.escapeHtml(event.title)} (${startStr} - ${endStr})">${timeDisplay}</div>`;
+                // Build organizer info for month view
+                let organizerHtml = '';
+                if (event.organizer) {
+                    organizerHtml = `<div class="month-event-organizer">👤 ${this.escapeHtml(event.organizer)}</div>`;
+                }
+
+                // Build tooltip with full details
+                let tooltip = this.escapeHtml(event.title) + '\n' + timeDisplay;
+                if (event.organizer) tooltip += '\nBy: ' + this.escapeHtml(event.organizer);
+                if (event.description) tooltip += '\n' + this.escapeHtml(event.description);
+
+                html += `
+                    <div class="${eventClass}" title="${tooltip}">
+                        <div class="month-event-title">${this.escapeHtml(event.title)}</div>
+                        ${organizerHtml}
+                        <div class="month-event-time">${timeDisplay}</div>
+                    </div>
+                `;
             });
 
             if (events.length > 3) {
