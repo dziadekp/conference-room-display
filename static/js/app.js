@@ -909,6 +909,43 @@ class ConferenceRoomDisplay {
                 this.closeModal();
             }
         });
+
+        // Update fullscreen button on fullscreen change
+        document.addEventListener('fullscreenchange', () => this.updateFullscreenButton());
+        document.addEventListener('webkitfullscreenchange', () => this.updateFullscreenButton());
+    }
+
+    toggleFullscreen() {
+        const elem = document.documentElement;
+
+        if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+            // Enter fullscreen
+            if (elem.requestFullscreen) {
+                elem.requestFullscreen();
+            } else if (elem.webkitRequestFullscreen) {
+                elem.webkitRequestFullscreen(); // Safari/older Chrome
+            } else if (elem.msRequestFullscreen) {
+                elem.msRequestFullscreen(); // IE11
+            }
+        } else {
+            // Exit fullscreen
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                document.msExitFullscreen();
+            }
+        }
+    }
+
+    updateFullscreenButton() {
+        const btn = document.getElementById('fullscreenBtn');
+        if (btn) {
+            const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+            btn.textContent = isFullscreen ? '⛶' : '⛶';
+            btn.title = isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen';
+        }
     }
 }
 
