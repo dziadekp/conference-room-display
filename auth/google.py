@@ -57,8 +57,7 @@ async def google_login(request: Request):
 
     authorization_url, state = flow.authorization_url(
         access_type="offline",
-        include_granted_scopes="true",
-        prompt="consent",
+        prompt="consent",  # Force re-consent to get fresh scopes
     )
 
     # Store state in session (simple approach for demo)
