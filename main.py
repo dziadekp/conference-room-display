@@ -86,6 +86,63 @@ async def list_rooms(db: AsyncSession = Depends(get_db)):
     return {"rooms": rooms}
 
 
+@app.get("/api/rooms/{room_id}/debug-google")
+async def debug_google_calendar(
+    room_id: int,
+    date: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Debug endpoint to see raw Google Calendar data."""
+    from auth.google import get_google_credentials
+    from googleapiclient.discovery import build
+
+    calendar_service = CalendarService(db)
+    room = await calendar_service.get_room(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    if room["calendar_provider"] != "google":
+        return {"error": "Room is not using Google Calendar"}
+
+    credentials = await get_google_credentials(db)
+    if not credentials:
+        return {"error": "Google Calendar not connected"}
+
+    # Parse date or use today
+    target_date = None
+    if date:
+        try:
+            target_date = datetime.strptime(date, "%Y-%m-%d").date()
+        except ValueError:
+            target_date = datetime.now().date()
+    else:
+        target_date = datetime.now().date()
+
+    day_start = datetime.combine(target_date, datetime.min.time())
+    day_end = day_start + timedelta(days=1)
+
+    try:
+        service = build("calendar", "v3", credentials=credentials)
+        events_result = service.events().list(
+            calendarId=room["calendar_id"] or "primary",
+            timeMin=day_start.isoformat() + "Z",
+            timeMax=day_end.isoformat() + "Z",
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
+
+        return {
+            "room": room,
+            "date": target_date.isoformat(),
+            "timeMin": day_start.isoformat() + "Z",
+            "timeMax": day_end.isoformat() + "Z",
+            "raw_events": events_result.get("items", []),
+            "calendar_id_used": room["calendar_id"] or "primary",
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.get("/api/rooms/{room_id}/events")
 async def get_room_events(
     room_id: int,
