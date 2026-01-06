@@ -81,6 +81,19 @@ The `CalendarService` class (`services/calendar.py`) uses a provider abstraction
 - **Provider Fallback**: Rooms without calendar_provider use local SQLite storage
 - **Token Refresh**: OAuth tokens auto-refresh on API calls when expired
 
+### Google Calendar API Quirks
+
+**All-Day Event Dates**: Google Calendar returns all-day events with an *exclusive* end date. For example, a Tuesday-only event has:
+- `start.date: "2026-01-06"` (Tuesday)
+- `end.date: "2026-01-07"` (Wednesday - exclusive)
+
+The `_get_google_events()` method filters all-day events to only show on their actual start date, preventing them from appearing on subsequent days.
+
+**Organizer Display**: Google Calendar group calendar IDs look like `c_33d3d978...@group.calendar.google.com`. The code:
+1. Prefers `displayName` over email
+2. Skips `@group.calendar.google.com` addresses
+3. Falls back to `creator` info if organizer is unavailable
+
 ### Digital Signage
 - **Full-Screen Display**: `/signage/{display_id}` renders full-screen slideshow optimized for TVs
 - **Media Support**: Images (JPG, PNG, GIF), videos (MP4, WebM), and PowerPoint (PPT, PPTX), max 50MB per file
