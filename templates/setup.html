@@ -106,7 +106,7 @@
                 </div>
                 <div class="form-group">
                     <label for="calendarProvider">Calendar Provider</label>
-                    <select id="calendarProvider">
+                    <select id="calendarProvider" onchange="onProviderChange()">
                         <option value="">None (Local only)</option>
                         {% if has_google or request.query_params.get('google') == 'connected' %}
                         <option value="google">Google Calendar</option>
@@ -116,16 +116,38 @@
                         {% endif %}
                     </select>
                 </div>
-                <div class="form-group">
-                    <label for="calendarId">Calendar ID (optional)</label>
+
+                <!-- Google Calendar Selection (hidden by default) -->
+                <div id="googleCalendarSection" style="display: none;">
+                    <div class="form-group">
+                        <label for="googleCalendarSelect">Select Calendar</label>
+                        <select id="googleCalendarSelect" onchange="onCalendarSelect()">
+                            <option value="">Loading calendars...</option>
+                        </select>
+                    </div>
+
+                    <!-- Create New Calendar Option -->
+                    <div id="createCalendarSection" style="display: none; margin-top: 10px; padding: 15px; background: #f0fdf4; border-radius: 8px; border: 1px solid #86efac;">
+                        <label for="newCalendarName" style="font-weight: 500; margin-bottom: 8px; display: block;">New Calendar Name</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="newCalendarName" placeholder="e.g., Conference Room A Calendar" style="flex: 1;">
+                            <button class="book-btn" onclick="createNewCalendar()" style="padding: 8px 16px; background: #22c55e;">Create</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manual Calendar ID (for Microsoft or manual entry) -->
+                <div id="manualCalendarSection" class="form-group" style="display: none;">
+                    <label for="calendarId">Calendar ID</label>
                     <input type="text" id="calendarId" placeholder="Leave empty for primary calendar">
                 </div>
-                <button class="book-btn primary" onclick="addRoom()" style="min-width: auto; padding: 12px 30px;">
+
+                <button class="book-btn primary" onclick="addRoom()" style="min-width: auto; padding: 12px 30px; margin-top: 15px;">
                     Add Room
                 </button>
             </div>
             <p style="margin-top: 15px; font-size: 0.85rem; color: var(--text-secondary);">
-                For Google, you can find Calendar IDs in Google Calendar settings. For Microsoft, leave empty to use your default calendar.
+                For Google, select an existing calendar or create a new one. For Microsoft, leave empty to use your default calendar.
             </p>
         </div>
 
@@ -208,6 +230,179 @@ MICROSOFT_TENANT_ID=common  # or your tenant ID</pre>
 
     <script src="/static/js/app.js"></script>
     <script>
+        // Calendar Selection Management
+        let googleCalendars = [];
+        let selectedCalendarId = '';
+
+        async function onProviderChange() {
+            const provider = document.getElementById('calendarProvider').value;
+            const googleSection = document.getElementById('googleCalendarSection');
+            const manualSection = document.getElementById('manualCalendarSection');
+            const createSection = document.getElementById('createCalendarSection');
+
+            // Reset
+            googleSection.style.display = 'none';
+            manualSection.style.display = 'none';
+            createSection.style.display = 'none';
+            selectedCalendarId = '';
+
+            if (provider === 'google') {
+                googleSection.style.display = 'block';
+                await loadGoogleCalendars();
+            } else if (provider === 'microsoft') {
+                manualSection.style.display = 'block';
+            }
+        }
+
+        async function loadGoogleCalendars() {
+            const select = document.getElementById('googleCalendarSelect');
+            select.innerHTML = '<option value="">Loading calendars...</option>';
+
+            try {
+                const response = await fetch('/api/google/calendars');
+                if (!response.ok) {
+                    const error = await response.json();
+                    if (response.status === 401) {
+                        select.innerHTML = '<option value="">Please connect Google Calendar first</option>';
+                        return;
+                    }
+                    throw new Error(error.detail || 'Failed to load calendars');
+                }
+
+                const data = await response.json();
+                googleCalendars = data.calendars || [];
+
+                // Build options
+                let options = '<option value="">-- Select a calendar --</option>';
+                for (const cal of googleCalendars) {
+                    const label = cal.primary ? `${cal.name} (Primary)` : cal.name;
+                    const writable = cal.accessRole === 'owner' || cal.accessRole === 'writer';
+                    if (writable) {
+                        options += `<option value="${cal.id}">${label}</option>`;
+                    }
+                }
+                options += '<option value="__create_new__">➕ Create New Calendar...</option>';
+
+                select.innerHTML = options;
+
+            } catch (error) {
+                console.error('Error loading calendars:', error);
+                select.innerHTML = '<option value="">Error loading calendars</option>';
+            }
+        }
+
+        function onCalendarSelect() {
+            const select = document.getElementById('googleCalendarSelect');
+            const createSection = document.getElementById('createCalendarSection');
+
+            if (select.value === '__create_new__') {
+                createSection.style.display = 'block';
+                selectedCalendarId = '';
+                // Pre-fill with room name if available
+                const roomName = document.getElementById('roomName').value;
+                if (roomName) {
+                    document.getElementById('newCalendarName').value = roomName + ' Calendar';
+                }
+            } else {
+                createSection.style.display = 'none';
+                selectedCalendarId = select.value;
+            }
+        }
+
+        async function createNewCalendar() {
+            const nameInput = document.getElementById('newCalendarName');
+            const name = nameInput.value.trim();
+
+            if (!name) {
+                alert('Please enter a calendar name');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/google/calendars?name=${encodeURIComponent(name)}`, {
+                    method: 'POST'
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to create calendar');
+                }
+
+                const data = await response.json();
+                alert(`Calendar "${data.calendar.name}" created successfully!`);
+
+                // Reload calendars and select the new one
+                await loadGoogleCalendars();
+                document.getElementById('googleCalendarSelect').value = data.calendar.id;
+                selectedCalendarId = data.calendar.id;
+                document.getElementById('createCalendarSection').style.display = 'none';
+
+            } catch (error) {
+                console.error('Error creating calendar:', error);
+                alert('Failed to create calendar: ' + error.message);
+            }
+        }
+
+        async function addRoom() {
+            const name = document.getElementById('roomName').value.trim();
+            const provider = document.getElementById('calendarProvider').value;
+
+            if (!name) {
+                alert('Please enter a room name');
+                return;
+            }
+
+            // Determine calendar ID based on provider
+            let calendarId = '';
+            if (provider === 'google') {
+                calendarId = selectedCalendarId;
+                if (!calendarId) {
+                    alert('Please select a calendar for this room');
+                    return;
+                }
+            } else if (provider === 'microsoft') {
+                calendarId = document.getElementById('calendarId').value.trim();
+            }
+
+            try {
+                const params = new URLSearchParams({
+                    name: name,
+                    ...(provider && { calendar_provider: provider }),
+                    ...(calendarId && { calendar_id: calendarId }),
+                });
+
+                const response = await fetch('/api/rooms?' + params.toString(), {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    const error = await response.json();
+                    alert('Error: ' + (error.detail || 'Failed to create room'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to create room');
+            }
+        }
+
+        async function deleteRoom(roomId) {
+            if (!confirm('Delete this room?')) return;
+
+            try {
+                const response = await fetch(`/api/rooms/${roomId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    window.location.reload();
+                } else {
+                    alert('Failed to delete room');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to delete room');
+            }
+        }
+
         // Digital Signage Management
         let currentSignageId = null;
 

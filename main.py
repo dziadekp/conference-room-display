@@ -376,6 +376,73 @@ async def setup_page(request: Request, db: AsyncSession = Depends(get_db)):
     })
 
 
+@app.get("/api/google/calendars")
+async def list_google_calendars(db: AsyncSession = Depends(get_db)):
+    """List all calendars from the connected Google account."""
+    from auth.google import get_google_credentials
+    from googleapiclient.discovery import build
+
+    credentials = await get_google_credentials(db)
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Google Calendar not connected")
+
+    try:
+        service = build("calendar", "v3", credentials=credentials)
+        calendar_list = service.calendarList().list().execute()
+
+        calendars = []
+        for cal in calendar_list.get("items", []):
+            calendars.append({
+                "id": cal["id"],
+                "name": cal.get("summary", cal["id"]),
+                "primary": cal.get("primary", False),
+                "accessRole": cal.get("accessRole", "reader"),
+            })
+
+        # Sort: primary first, then by name
+        calendars.sort(key=lambda x: (not x["primary"], x["name"].lower()))
+
+        return {"calendars": calendars}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch calendars: {str(e)}")
+
+
+@app.post("/api/google/calendars")
+async def create_google_calendar(
+    name: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Create a new Google Calendar."""
+    from auth.google import get_google_credentials
+    from googleapiclient.discovery import build
+
+    credentials = await get_google_credentials(db)
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Google Calendar not connected")
+
+    try:
+        service = build("calendar", "v3", credentials=credentials)
+
+        calendar = {
+            "summary": name,
+            "timeZone": "America/New_York",  # Default timezone
+        }
+
+        created_calendar = service.calendars().insert(body=calendar).execute()
+
+        return {
+            "success": True,
+            "calendar": {
+                "id": created_calendar["id"],
+                "name": created_calendar.get("summary", name),
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create calendar: {str(e)}")
+
+
 @app.post("/api/rooms")
 async def create_room(
     name: str,
