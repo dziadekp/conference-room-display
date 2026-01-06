@@ -387,18 +387,52 @@ class CalendarService:
             ).execute()
 
             events = events_result.get("items", [])
+            target_date_str = target_date.isoformat()
 
-            return [
-                {
+            result = []
+            for event in events:
+                start_dt = event["start"].get("dateTime")
+                start_date = event["start"].get("date")
+                end_dt = event["end"].get("dateTime")
+                end_date = event["end"].get("date")
+
+                # Handle all-day events (date-only, no dateTime)
+                # Google returns all-day events with end date being the NEXT day (exclusive)
+                # We need to filter to only show events that actually START on the target date
+                if start_date and not start_dt:
+                    # This is an all-day event - only include if it starts on target date
+                    if start_date != target_date_str:
+                        continue  # Skip events from previous days that "bleed" into today
+
+                # Get organizer info - prefer displayName over email
+                organizer_info = event.get("organizer", {})
+                organizer = organizer_info.get("displayName", "")
+                # If no display name, check if it's a group calendar email (skip those)
+                if not organizer:
+                    email = organizer_info.get("email", "")
+                    # Skip long group calendar IDs, only show real email addresses
+                    if email and "@group.calendar.google.com" not in email and len(email) < 50:
+                        organizer = email
+
+                # Also check creator for more useful info
+                if not organizer:
+                    creator_info = event.get("creator", {})
+                    organizer = creator_info.get("displayName", "")
+                    if not organizer:
+                        email = creator_info.get("email", "")
+                        if email and "@group.calendar.google.com" not in email and len(email) < 50:
+                            organizer = email
+
+                result.append({
                     "id": event["id"],
                     "title": event.get("summary", "Busy"),
-                    "start": event["start"].get("dateTime", event["start"].get("date")),
-                    "end": event["end"].get("dateTime", event["end"].get("date")),
-                    "organizer": event.get("organizer", {}).get("email", ""),
+                    "start": start_dt or start_date,
+                    "end": end_dt or end_date,
+                    "organizer": organizer,
                     "provider": "google",
-                }
-                for event in events
-            ]
+                })
+
+            return result
         except Exception as e:
             print(f"Error fetching Google events: {e}")
             return []
